@@ -350,6 +350,60 @@ export default function CapacidadPage() {
   // PPM estimado
   const ppm = result ? Math.round((1 - (normalCDF((result.lse - result.mean) / result.sigma) - normalCDF((result.lie - result.mean) / result.sigma))) * 1e6) : 0;
 
+  // Tooltip interactivo premium para gráfico de capacidad (distribución)
+  const CapacidadTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      const xVal = data.x;
+      const yVal = data.y;
+      
+      return (
+        <div className="custom-tooltip" style={{
+          background: 'rgba(15, 23, 42, 0.95)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid var(--border)',
+          borderRadius: '8px',
+          padding: '10px 14px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+          fontSize: '12px',
+          fontFamily: 'Outfit, sans-serif'
+        }}>
+          <div style={{ fontWeight: 700, color: '#ffffff', marginBottom: 6, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 4 }}>
+            Punto de Distribución
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+              <span style={{ color: 'var(--green-light)', fontWeight: 600 }}>Valor (X):</span>
+              <span style={{ fontFamily: 'JetBrains Mono', color: '#ffffff', fontWeight: 700 }}>{xVal.toFixed(3)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+              <span style={{ color: 'var(--text-muted)' }}>Densidad f(x):</span>
+              <span style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-muted)' }}>{yVal.toFixed(6)}</span>
+            </div>
+            
+            {result && (
+              <div style={{ borderTop: '1px dashed rgba(255,255,255,0.1)', marginTop: 6, paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+                  <span style={{ color: '#ef4444' }}>LSE (Especificación Sup):</span>
+                  <span style={{ fontFamily: 'JetBrains Mono', color: '#ef4444', fontWeight: 600 }}>{result.lse}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+                  <span style={{ color: 'var(--green-primary)' }}>Media (X̄):</span>
+                  <span style={{ fontFamily: 'JetBrains Mono', color: 'var(--green-primary)', fontWeight: 600 }}>{result.mean.toFixed(3)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+                  <span style={{ color: '#ef4444' }}>LIE (Especificación Inf):</span>
+                  <span style={{ fontFamily: 'JetBrains Mono', color: '#ef4444', fontWeight: 600 }}>{result.lie}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   if (!mounted) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 16 }}>
@@ -579,7 +633,13 @@ export default function CapacidadPage() {
               return (
                 <div className={`chart-wrapper ${!printConfig.curve ? 'no-print' : ''}`}>
                   <div className="chart-title">Distribución del Proceso vs. Especificaciones</div>
-                  <div className="chart-desc">Área verde = dentro de especificación · Líneas rojas = LSE y LIE</div>
+                  <div className="chart-desc" style={{ color: 'var(--text-muted)', lineHeight: '1.6' }}>
+                    Área verde = dentro de especificación · Líneas rojas = Especificaciones · Línea discontinua verde = Media (X̄)
+                    <br />
+                    <span style={{ fontSize: '11px', display: 'inline-block', marginTop: '4px', background: 'rgba(255, 255, 255, 0.03)', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                      LSE (Superior) = <strong style={{ color: '#ef4444' }}>{result.lse}</strong> | Media (X̄) = <strong style={{ color: 'var(--green-light)' }}>{result.mean.toFixed(3)}</strong> | LIE (Inferior) = <strong style={{ color: '#ef4444' }}>{result.lie}</strong>
+                    </span>
+                  </div>
                   <ResponsiveContainer width="100%" height={280}>
                     <AreaChart data={curve} margin={{ top: 15, right: 20, left: 10, bottom: 5 }}>
                       <defs>
@@ -591,10 +651,10 @@ export default function CapacidadPage() {
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                       <XAxis dataKey="x" type="number" stroke="var(--text-muted)" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} domain={domainCurveX} allowDataOverflow={true} />
                       <YAxis stroke="var(--text-muted)" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} domain={domainCurveY} allowDataOverflow={true} />
-                      <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
-                      <ReferenceLine x={result.lse} stroke="#ef4444" strokeWidth={2} label={{ value: `LSE: ${result.lse}`, fill: '#ef4444', fontSize: 11, position: 'insideTopRight' }} />
-                      <ReferenceLine x={result.lie} stroke="#ef4444" strokeWidth={2} label={{ value: `LIE: ${result.lie}`, fill: '#ef4444', fontSize: 11, position: 'insideTopLeft' }} />
-                      <ReferenceLine x={result.mean} stroke="var(--green-primary)" strokeDasharray="4 2" label={{ value: `X̄: ${result.mean.toFixed(2)}`, fill: 'var(--green-primary)', fontSize: 11, position: 'insideTop' }} />
+                      <Tooltip content={<CapacidadTooltip />} />
+                      <ReferenceLine x={result.lse} stroke="#ef4444" strokeWidth={2} />
+                      <ReferenceLine x={result.lie} stroke="#ef4444" strokeWidth={2} />
+                      <ReferenceLine x={result.mean} stroke="var(--green-primary)" strokeDasharray="4 2" strokeWidth={1.5} />
                       <Area type="monotone" dataKey="y" stroke="var(--green-primary)" strokeWidth={2} fill="url(#colorProcess)" name="f(x)" />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -604,6 +664,7 @@ export default function CapacidadPage() {
           </>
         )}
       </div>
+
 
       {/* REPORT CONFIGURATION MODAL */}
       {isReportModalOpen && (
