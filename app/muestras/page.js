@@ -351,6 +351,31 @@ export default function MuestrasPage() {
     setEditMatrix([...editMatrix, newRow]);
   };
 
+  const handleCreateDeleteColumn = (colIndex) => {
+    const currentTam = matrixData[0]?.length || 5;
+    if (currentTam <= 2) {
+      alert('Se requieren al menos 2 observaciones (muestras) por subgrupo para el análisis estadístico.');
+      return;
+    }
+    if (confirm(`¿Estás seguro de que deseas eliminar la columna de Dato ${colIndex + 1} de todos los subgrupos?`)) {
+      const nextMatrix = matrixData.map(row => row.filter((_, ci) => ci !== colIndex));
+      setMatrixData(nextMatrix);
+      setForm(f => ({ ...f, tamSubgrupo: currentTam - 1 }));
+    }
+  };
+
+  const handleDeleteColumn = (colIndex) => {
+    const currentTam = editMatrix[0]?.length || 5;
+    if (currentTam <= 2) {
+      alert('Se requieren al menos 2 observaciones (muestras) por subgrupo para el análisis estadístico.');
+      return;
+    }
+    if (confirm(`¿Estás seguro de que deseas eliminar la muestra X${colIndex + 1} (columna entera) de todos los subgrupos?`)) {
+      const nextMatrix = editMatrix.map(row => row.filter((_, ci) => ci !== colIndex));
+      setEditMatrix(nextMatrix);
+    }
+  };
+
   const handleSaveEdit = () => {
     if (!editingRecord) return;
     try {
@@ -950,8 +975,22 @@ export default function MuestrasPage() {
                         <th style={{ padding: '10px 12px', textAlign: 'center', width: '60px' }}>Subgrupo</th>
                         {!form.isAtributo ? (
                           <>
-                            {Array.from({ length: parseInt(form.tamSubgrupo) }, (_, i) => (
-                              <th key={i} style={{ padding: '10px 12px', textAlign: 'center' }}>Dato {i + 1}</th>
+                            {Array.from({ length: matrixData[0]?.length || parseInt(form.tamSubgrupo) || 5 }, (_, i) => (
+                              <th key={i} style={{ padding: '10px 6px', textAlign: 'center' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                                  <span>Dato {i + 1}</span>
+                                  {(matrixData[0]?.length || parseInt(form.tamSubgrupo) || 5) > 2 && (
+                                    <button 
+                                      className="btn btn-red" 
+                                      style={{ padding: '2px 4px', fontSize: '9px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer' }} 
+                                      onClick={() => handleCreateDeleteColumn(i)}
+                                      title="Eliminar columna de muestra"
+                                    >
+                                      <Trash2 size={10} />
+                                    </button>
+                                  )}
+                                </div>
+                              </th>
                             ))}
                             <th style={{ padding: '10px 12px', textAlign: 'center', background: 'rgba(16, 185, 129, 0.02)', color: 'var(--green-light)' }}>Media (X̄)</th>
                             <th style={{ padding: '10px 12px', textAlign: 'center', background: 'rgba(245, 158, 11, 0.02)', color: '#f59e0b' }}>Rango (R)</th>
@@ -1331,8 +1370,22 @@ export default function MuestrasPage() {
                       <thead>
                         <tr style={{ background: 'rgba(255, 255, 255, 0.02)' }}>
                           <th style={{ padding: '10px', textAlign: 'center', width: '70px' }}>Sg</th>
-                          {Array.from({ length: parseInt(editingRecord.tam) || (editMatrix[0]?.length || 5) }, (_, i) => (
-                            <th key={i} style={{ padding: '10px', textAlign: 'center' }}>X{i + 1}</th>
+                          {Array.from({ length: editMatrix[0]?.length || parseInt(editingRecord.tam) || 5 }, (_, i) => (
+                            <th key={i} style={{ padding: '10px 6px', textAlign: 'center' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                                <span>X{i + 1}</span>
+                                {(editMatrix[0]?.length || parseInt(editingRecord.tam) || 5) > 2 && (
+                                  <button 
+                                    className="btn btn-red" 
+                                    style={{ padding: '2px 4px', fontSize: '9px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer' }} 
+                                    onClick={() => handleDeleteColumn(i)}
+                                    title="Eliminar columna de muestra"
+                                  >
+                                    <Trash2 size={10} />
+                                  </button>
+                                )}
+                              </div>
+                            </th>
                           ))}
                           <th style={{ padding: '10px', textAlign: 'center', color: 'var(--green-light)', background: 'rgba(16, 185, 129, 0.02)' }}>Media (X̄)</th>
                           <th style={{ padding: '10px', textAlign: 'center', width: '70px' }}>Acción</th>

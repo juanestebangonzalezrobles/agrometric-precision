@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { calcCapability, aguacatePeso, aloeAltura, manzanillaP, tomateDefectos } from '../../lib/data';
+import { calcCapability, calcDescriptiveStats, aguacatePeso, aloeAltura, manzanillaP, tomateDefectos } from '../../lib/data';
 import { Printer, X, RefreshCw } from 'lucide-react';
 
 const STORAGE_KEY = 'agrometric_registros';
@@ -142,7 +142,7 @@ function interpCp(cp) {
   if (cp >= 1.67) return { text: 'Proceso Excelente (Cp ≥ 1.67) — Clase mundial', type: 'good' };
   if (cp >= 1.33) return { text: 'Proceso Capaz (Cp ≥ 1.33) — Satisfactorio', type: 'good' };
   if (cp >= 1.00) return { text: 'Proceso Marginalmente Capaz (1.00 ≤ Cp < 1.33)', type: 'warning' };
-  return { text: 'Proceso No Capaz (Cp < 1.00) — Requiere mejora urgente', type: 'danger' };
+  return { text: 'Proceso No Capaz (Cp < 1.00) — Requiere mejora urgente', type: 'error' };
 }
 
 export default function CapacidadPage() {
@@ -151,6 +151,7 @@ export default function CapacidadPage() {
   const [customMode, setCustomMode] = useState(true);
   const [lse, setLse] = useState('');
   const [lie, setLie] = useState('');
+  const [nominal, setNominal] = useState('');
   const [customVals, setCustomVals] = useState('');
   const [result, setResult] = useState(null);
   const [curve, setCurve] = useState([]);
@@ -162,6 +163,7 @@ export default function CapacidadPage() {
     indices: true,
     stats: true,
     diagnostic: true,
+    descStats: true,
     curve: true,
   });
 
@@ -191,8 +193,10 @@ export default function CapacidadPage() {
           setCustomMode(false);
           const recLse = parseFloat(rec.lse) || 0;
           const recLie = parseFloat(rec.lie) || 0;
+          const recNominal = rec.nominal !== undefined && rec.nominal !== null ? rec.nominal : '';
           setLse(recLse);
           setLie(recLie);
+          setNominal(recNominal);
           if (recLse !== 0 || recLie !== 0) {
             const r = calcCapability(rec.subgruposData, recLse, recLie);
             setResult(r);
@@ -209,8 +213,10 @@ export default function CapacidadPage() {
         setCustomMode(false);
         const recLse = parseFloat(rec.lse) || 0;
         const recLie = parseFloat(rec.lie) || 0;
+        const recNominal = rec.nominal !== undefined && rec.nominal !== null ? rec.nominal : '';
         setLse(recLse);
         setLie(recLie);
+        setNominal(recNominal);
         if (recLse !== 0 || recLie !== 0) {
           const r = calcCapability(rec.subgruposData, recLse, recLie);
           setResult(r);
@@ -228,8 +234,10 @@ export default function CapacidadPage() {
     setCustomMode(false);
     const recLse = parseFloat(rec.lse) || 0;
     const recLie = parseFloat(rec.lie) || 0;
+    const recNominal = rec.nominal !== undefined && rec.nominal !== null ? rec.nominal : '';
     setLse(recLse);
     setLie(recLie);
+    setNominal(recNominal);
     if (recLse !== 0 || recLie !== 0) {
       const r = calcCapability(rec.subgruposData, recLse, recLie);
       setResult(r);
@@ -266,6 +274,13 @@ export default function CapacidadPage() {
 
   // PPM estimado
   const ppm = result ? Math.round((1 - (normalCDF((result.lse - result.mean) / result.sigma) - normalCDF((result.lie - result.mean) / result.sigma))) * 1e6) : 0;
+
+  // Estadísticas descriptivas calculadas dinámicamente
+  const descStats = result ? calcDescriptiveStats(result.allValues) : null;
+
+  const targetNominal = (nominal !== '' && !isNaN(parseFloat(nominal))) 
+    ? parseFloat(nominal) 
+    : (result ? (result.lse + result.lie) / 2 : 0);
 
   // Tooltip interactivo premium para gráfico de capacidad (distribución)
   const CapacidadTooltip = ({ active, payload }) => {
@@ -367,14 +382,19 @@ export default function CapacidadPage() {
 
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">LSE (Límite Superior de Especificación)</label>
-              <input type="number" className="form-input" style={{ width: 160 }} value={lse}
-                onChange={e => setLse(+e.target.value)} />
+              <label className="form-label">LEI (Límite Inferior de Especificación)</label>
+              <input type="number" className="form-input" style={{ width: 160 }} value={lie}
+                onChange={e => setLie(e.target.value === '' ? '' : +e.target.value)} placeholder="Ej: 220" />
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">LIE (Límite Inferior de Especificación)</label>
-              <input type="number" className="form-input" style={{ width: 160 }} value={lie}
-                onChange={e => setLie(+e.target.value)} />
+              <label className="form-label">Valor Nominal (Objetivo)</label>
+              <input type="number" className="form-input" style={{ width: 160 }} value={nominal}
+                onChange={e => setNominal(e.target.value === '' ? '' : +e.target.value)} placeholder="Ej: 225" />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">LES (Límite Superior de Especificación)</label>
+              <input type="number" className="form-input" style={{ width: 160 }} value={lse}
+                onChange={e => setLse(e.target.value === '' ? '' : +e.target.value)} placeholder="Ej: 230" />
             </div>
             {!customMode && (
               <button className="btn btn-secondary" onClick={recalculate}>Recalcular</button>
@@ -516,25 +536,61 @@ export default function CapacidadPage() {
                     </div>
                   </div>
 
+                  {/* Conclusiones de Capacidad del Proceso */}
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.08)', marginBottom: 12 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--green-light)', marginBottom: 8 }}>Conclusiones de Capacidad del Proceso:</div>
+                    <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--text-primary)' }}>
+                        🎯 <strong>Interpretación e Impacto Industrial (Cp vs. Cpk):</strong>
+                        <ul style={{ margin: '8px 0 0 0', paddingLeft: 18, color: 'var(--text-muted)', fontSize: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <li>
+                            <strong>Capacidad Potencial del Proceso (Cp = {result.Cp.toFixed(3)}):</strong> {result.Cp >= 1.33 
+                              ? `La dispersión natural del proceso (6σ = ${(6 * result.sigmaWithin).toFixed(4)}) cabe cómodamente dentro de la tolerancia de especificación de ${(result.lse - result.lie).toFixed(4)} unidades. Esto indica que el proceso posee una excelente capacidad potencial de cumplimiento.`
+                              : `La variación natural del proceso (6σ = ${(6 * result.sigmaWithin).toFixed(4)}) excede la tolerancia permitida de ${(result.lse - result.lie).toFixed(4)} unidades. Esto significa que la variabilidad es demasiado grande; incluso si el proceso estuviera perfectamente centrado, se continuarán generando productos defectuosos de forma inevitable.`
+                            }
+                          </li>
+                          <li>
+                            <strong>Capacidad Real del Proceso (Cpk = {result.Cpk.toFixed(3)}):</strong> {result.Cpk >= 1.33
+                              ? `El proceso está cumpliendo plenamente en la práctica con las especificaciones del cliente. El nivel promedio actual (${result.mean.toFixed(4)}) está bien balanceado dentro del intervalo de tolerancia.`
+                              : `El proceso es incapaz en la práctica. Se calcula un nivel promedio de ${result.mean.toFixed(4)}, el cual se encuentra ${Math.abs(result.Cp - result.Cpk) < 0.15 ? 'centrado, pero con dispersión excesiva que desborda las tolerancias.' : `descentrado hacia el límite de especificación ${result.Cpu < result.Cpl ? 'Superior' : 'Inferior'}.`}`
+                            }
+                          </li>
+                          <li>
+                            <strong>Análisis de Recentrado del Proceso (Cp vs Cpk):</strong>{' '}
+                            {result.Cp - result.Cpk > 0.15 ? (
+                              <span>
+                                <strong style={{ color: 'var(--green-light)' }}>¡Oportunidad de Oro por Descentrado!</strong> La diferencia entre el Cp potencial ({result.Cp.toFixed(3)}) y el Cpk real ({result.Cpk.toFixed(3)}) es de {(result.Cp - result.Cpk).toFixed(3)}. Esto confirma un descentrado significativo de la media ({result.mean.toFixed(4)}) respecto al valor nominal de {targetNominal.toFixed(4)}. Al corregir este centrado (moviendo el promedio del proceso hacia la marca nominal), se incrementará de inmediato la capacidad real Cpk hasta un máximo de {result.Cp.toFixed(3)} y se reducirá el nivel de defectos de {ppm.toLocaleString()} PPM a prácticamente cero <strong>sin incurrir en gastos de nuevos equipos o materias primas</strong>.
+                              </span>
+                            ) : (
+                              <span>
+                                <strong style={{ color: 'var(--green-light)' }}>Estrategia Kaizen - Reducción de Dispersión:</strong> Tu proceso ya se encuentra óptimamente centrado (la diferencia Cp - Cpk es de apenas {(result.Cp - result.Cpk).toFixed(3)}). En este escenario, intentar ajustar el promedio hacia el valor nominal ({targetNominal.toFixed(4)}) no aportará ningún beneficio práctico de calidad. La única forma viable de elevar el Cpk de {result.Cpk.toFixed(3)} es **reducir la variabilidad de corto plazo** (disminuir sigma), lo cual requiere investigar variaciones en materias primas, desgaste de herramental o realizar mejoras en las condiciones del entorno.
+                              </span>
+                            )}
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Recomendaciones */}
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--green-light)', marginBottom: 8 }}>Recomendaciones:</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--green-light)', marginBottom: 8 }}>Recomendaciones y Acciones Kaizen:</div>
                     <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.8 }}>
                       {cpkOk ? (<>
                         <li>El proceso cumple el estándar mínimo de industria (Cpk ≥ 1.33). Mantenga el control estadístico y monitoreo periódico.</li>
-                        {!centered && <li>Aunque Cpk es aceptable, el proceso está ligeramente descentrado. Ajustar la media hacia {((result.lse + result.lie) / 2).toFixed(2)} mejoraría el desempeño.</li>}
+                        {!centered && <li>Aunque Cpk es aceptable, el proceso está ligeramente descentrado. Ajustar la media hacia {targetNominal.toFixed(2)} mejoraría el desempeño.</li>}
                         {result.Cpk < 1.67 && <li>Para procesos críticos (aeroespacial, médico) se requiere Cpk ≥ 1.67. Considere reducir la variabilidad para alcanzar clase mundial.</li>}
                         <li>Implemente cartas de control para mantener el proceso dentro de los límites actuales.</li>
                       </>) : result.Cpk >= 1 ? (<>
                         <li>El proceso es marginalmente capaz. Se producen algunos defectos. Implemente inspección 100% como medida temporal.</li>
                         <li>Priorice la reducción de variabilidad: estandarice parámetros del proceso, calibre equipos de medición.</li>
-                        {!centered && <li>Centre el proceso hacia el nominal ({((result.lse + result.lie) / 2).toFixed(2)}) para ganar margen en ambos límites.</li>}
+                        {!centered && <li>Centre el proceso hacia el nominal ({targetNominal.toFixed(2)}) para ganar margen en ambos límites.</li>}
                         <li>Establezca un proyecto de mejora Six Sigma o Kaizen con meta Cpk ≥ 1.33.</li>
                       </>) : (<>
                         <li><strong style={{ color: '#ef4444' }}>Acción inmediata requerida.</strong> El proceso genera productos no conformes que pueden llegar al cliente.</li>
                         <li>Implemente inspección 100% de los productos hasta resolver el problema de capacidad.</li>
                         <li>Investigue y elimine causas de variación excesiva: equipos desgastados, materias primas fuera de especificación, parámetros del proceso inadecuados.</li>
-                        {!centered && <li>Centre el proceso hacia {((result.lse + result.lie) / 2).toFixed(2)}. Solo el recentrado podría mejorar el Cpk de {result.Cpk.toFixed(3)} a {result.Cp.toFixed(3)}.</li>}
+                        {!centered && <li>Centre el proceso hacia {targetNominal.toFixed(2)}. Solo el recentrado podría mejorar el Cpk de {result.Cpk.toFixed(3)} a {result.Cp.toFixed(3)}.</li>}
                         <li>Evalúe si los límites de especificación son realistas para las capacidades actuales del proceso.</li>
                       </>)}
                     </ul>
@@ -542,6 +598,130 @@ export default function CapacidadPage() {
                 </div>
               );
             })()}
+
+            {/* Estadísticas Descriptivas */}
+            {descStats && (
+              <div className={`card ${!printConfig.descStats ? 'no-print' : ''}`} style={{ marginBottom: 16 }}>
+                <div className="section-title" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>📊 Estadísticas Descriptivas del Proceso</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>N = {descStats.n} muestras analizadas</span>
+                </div>
+                
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: 16
+                }}>
+                  {/* 1. Tendencia Central */}
+                  <div style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--green-light)', borderBottom: '1px solid var(--border)', paddingBottom: 8, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      🎯 Medidas de Tendencia Central
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Media (Arithmetic Mean)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.mean.toFixed(4)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Mediana (Median)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.median.toFixed(4)}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Posición */}
+                  <div style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--green-light)', borderBottom: '1px solid var(--border)', paddingBottom: 8, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      📍 Medidas de Posición
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Mínimo (Min)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.min.toFixed(4)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Máximo (Max)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.max.toFixed(4)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Primer Cuartil (Q1)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.q1.toFixed(4)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Tercer Cuartil (Q3)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.q3.toFixed(4)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Rango Intercuartil (IQR)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.iqr.toFixed(4)}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Dispersión */}
+                  <div style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--green-light)', borderBottom: '1px solid var(--border)', paddingBottom: 8, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      📉 Medidas de Dispersión
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Rango Total (Range)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.rango.toFixed(4)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Varianza Muestral (S²)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.varMuestral.toFixed(6)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Desv. Estándar Muestral (S)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.sdMuestral.toFixed(4)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Varianza Poblacional (σ²)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.varPoblacional.toFixed(6)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Desv. Estándar Poblacional (σ)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.sdPoblacional.toFixed(4)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Coef. Variación (CV%)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.cv.toFixed(2)}%</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Error Estándar (SEM)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.errorEstandar.toFixed(4)}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4. Forma */}
+                  <div style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--green-light)', borderBottom: '1px solid var(--border)', paddingBottom: 8, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      📐 Medidas de Forma
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Asimetría (Skewness)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.skew.toFixed(4)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Curtosis (Excess Kurtosis)</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: 'var(--text-primary)' }}>{descStats.kurt.toFixed(4)}</strong>
+                      </div>
+                      <div style={{ borderTop: '1px dashed var(--border)', marginTop: 8, paddingTop: 8, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                        💡 <strong>Interpretación de Forma:</strong>
+                        <ul style={{ margin: '4px 0 0 0', paddingLeft: 12 }}>
+                          <li>Asimetría &gt; 0: Cola derecha.</li>
+                          <li>Asimetría &lt; 0: Cola izquierda.</li>
+                          <li>Curtosis ≈ 0: Distribución normal (Mesocúrtica).</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Curva distribución */}
             {(() => {
@@ -558,11 +738,11 @@ export default function CapacidadPage() {
                     Área verde = dentro de especificación · Líneas rojas = Especificaciones · Línea discontinua verde = Media (X̄)
                     <br />
                     <span style={{ fontSize: '11px', display: 'inline-block', marginTop: '4px', background: 'rgba(255, 255, 255, 0.03)', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                      LSE (Superior) = <strong style={{ color: '#ef4444' }}>{result.lse}</strong> | Media (X̄) = <strong style={{ color: 'var(--green-light)' }}>{result.mean.toFixed(3)}</strong> | LIE (Inferior) = <strong style={{ color: '#ef4444' }}>{result.lie}</strong>
+                      LEI (Inferior) = <strong style={{ color: '#ef4444' }}>{result.lie}</strong> | Media (X̄) = <strong style={{ color: 'var(--green-light)' }}>{result.mean.toFixed(3)}</strong> | Nominal ({nominal !== '' ? 'Objetivo' : 'Central'}) = <strong style={{ color: '#3b82f6' }}>{targetNominal.toFixed(3)}</strong> | LES (Superior) = <strong style={{ color: '#ef4444' }}>{result.lse}</strong>
                     </span>
                   </div>
                   <ResponsiveContainer width="100%" height={280}>
-                    <AreaChart data={curve} margin={{ top: 15, right: 20, left: 10, bottom: 5 }}>
+                    <AreaChart data={curve} margin={{ top: 15, right: 20, left: 10, bottom: 25 }}>
                       <defs>
                         <linearGradient id="colorProcess" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="var(--green-primary)" stopOpacity={0.5} />
@@ -573,9 +753,10 @@ export default function CapacidadPage() {
                       <XAxis dataKey="x" type="number" stroke="var(--text-muted)" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} domain={domainCurveX} allowDataOverflow={true} />
                       <YAxis stroke="var(--text-muted)" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} domain={domainCurveY} allowDataOverflow={true} />
                       <Tooltip content={<CapacidadTooltip />} />
-                      <ReferenceLine x={result.lse} stroke="#ef4444" strokeWidth={2} />
-                      <ReferenceLine x={result.lie} stroke="#ef4444" strokeWidth={2} />
-                      <ReferenceLine x={result.mean} stroke="var(--green-primary)" strokeDasharray="4 2" strokeWidth={1.5} />
+                      <ReferenceLine x={result.lie} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 4" label={{ value: `LEI: ${result.lie}`, fill: '#ef4444', fontSize: 10, position: 'insideBottom', offset: 15 }} />
+                      <ReferenceLine x={targetNominal} stroke="#3b82f6" strokeWidth={1.5} strokeDasharray="3 3" label={{ value: `Nominal: ${targetNominal.toFixed(2)}`, fill: '#3b82f6', fontSize: 10, position: 'insideBottom', offset: 30 }} />
+                      <ReferenceLine x={result.mean} stroke="var(--green-primary)" strokeDasharray="4 2" strokeWidth={1.5} label={{ value: `Media: ${result.mean.toFixed(2)}`, fill: 'var(--green-primary)', fontSize: 10, position: 'insideBottom', offset: 15 }} />
+                      <ReferenceLine x={result.lse} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 4" label={{ value: `LES: ${result.lse}`, fill: '#ef4444', fontSize: 10, position: 'insideBottom', offset: 15 }} />
                       <Area type="monotone" dataKey="y" stroke="var(--green-primary)" strokeWidth={2} fill="url(#colorProcess)" name="f(x)" />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -614,6 +795,7 @@ export default function CapacidadPage() {
                 { key: 'indices', title: 'Índices de Capacidad', desc: 'KPIs Cp, Cpk, Pp y Ppk con nivel de suficiencia.' },
                 { key: 'stats', title: 'Estadísticos Generales y PPM', desc: 'Media, desviación estándar, límites y partes por millón estimadas.' },
                 { key: 'diagnostic', title: 'Diagnóstico y Recomendaciones', desc: 'Análisis explicativo sobre el centrado, sigma y propuestas Kaizen.' },
+                { key: 'descStats', title: 'Estadísticas Descriptivas', desc: 'Tendencia central, posición (Q1/Q3/IQR), dispersión (varianzas, CV%, SEM) y forma.' },
                 { key: 'curve', title: 'Gráfico de Distribución del Proceso', desc: 'Curva normal con áreas rellenas frente a las especificaciones.' },
               ].map(opt => (
                 <label key={opt.key} style={{

@@ -782,10 +782,9 @@ export default function AtributosPage() {
                     allowDataOverflow={true} 
                   />
                   <Tooltip content={<CustomTooltip tipo={result.tipo} />} />
-                  <ReferenceLine y={uclVal} stroke="#ef4444" strokeWidth={2} strokeDasharray="4 4" />
-                  <ReferenceLine y={lcVal} stroke="var(--green-primary)" strokeWidth={2} />
-                  {lclVal > 0 && <ReferenceLine y={lclVal} stroke="#ef4444" strokeWidth={2} strokeDasharray="4 4" />}
-                  
+                  <ReferenceLine y={uclVal} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 4" label={{ value: `LCS: ${uclVal.toFixed(result.tipo === 'p' || result.tipo === 'u' ? 4 : 2)}`, fill: '#ef4444', fontSize: 10, position: 'right', offset: 5 }} />
+                  <ReferenceLine y={lcVal} stroke="var(--green-primary)" strokeWidth={2} label={{ value: `LC: ${lcVal.toFixed(result.tipo === 'p' || result.tipo === 'u' ? 4 : 2)}`, fill: 'var(--green-primary)', fontSize: 10, position: 'right', offset: 5 }} />
+                  {lclVal > 0 && <ReferenceLine y={lclVal} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 4" label={{ value: `LCI: ${lclVal.toFixed(result.tipo === 'p' || result.tipo === 'u' ? 4 : 2)}`, fill: '#ef4444', fontSize: 10, position: 'right', offset: 5 }} />}
                   <Line 
                     type="monotone" 
                     dataKey={
@@ -824,6 +823,48 @@ export default function AtributosPage() {
             rateLabel = `${result.lcVal?.toFixed(4)} defectos por unidad promedio`;
           } else {
             rateLabel = `${rate} defectos por lote`;
+          }
+
+          const oocAboveUCL = result.data.filter(d => {
+            const val = result.tipo === 'p' ? d.p : result.tipo === 'np' ? d.np : result.tipo === 'u' ? d.u : d.c;
+            return val > d.ucl;
+          });
+          const oocBelowLCL = result.data.filter(d => {
+            const val = result.tipo === 'p' ? d.p : result.tipo === 'np' ? d.np : result.tipo === 'u' ? d.u : d.c;
+            return val < d.lcl;
+          });
+
+          let lciConclusion = '';
+          if (oocBelowLCL.length > 0) {
+            const bestPt = oocBelowLCL.reduce((min, d) => {
+              const val = result.tipo === 'p' ? d.p : result.tipo === 'np' ? d.np : result.tipo === 'u' ? d.u : d.c;
+              const minVal = result.tipo === 'p' ? min.p : result.tipo === 'np' ? min.np : result.tipo === 'u' ? min.u : min.c;
+              return val < minVal ? d : min;
+            }, oocBelowLCL[0]);
+            const bestVal = result.tipo === 'p' ? (bestPt.p * 100).toFixed(2) + '%' : result.tipo === 'np' ? bestPt.np : result.tipo === 'u' ? bestPt.u.toFixed(4) : bestPt.c;
+            lciConclusion = `¡Excelente! Se registran ${oocBelowLCL.length} subgrupos (subgrupos: ${oocBelowLCL.map(d => d.sg).join(', ')}) operando de forma extraordinaria por debajo del Límite de Control Inferior (LCI = ${lclVal.toFixed(4)}). El punto más destacado es el subgrupo ${bestPt.sg} con apenas ${bestVal}. En control por atributos, caer bajo el LCI demuestra un éxito de calidad (causa especial benéfica) que debe ser investigado para estandarizar las condiciones que lo hicieron posible.`;
+          } else {
+            lciConclusion = `El gráfico no reporta ningún subgrupo por debajo del Límite de Control Inferior (LCI = ${lclVal.toFixed(4)}). El nivel de no conformidades del lote fluctúa dentro de los rangos normales esperados. Note que registrar puntos bajo el LCI representaría un hito de calidad excepcional en atributos.`;
+          }
+
+          let lcsConclusion = '';
+          if (oocAboveUCL.length > 0) {
+            const worstPt = oocAboveUCL.reduce((max, d) => {
+              const val = result.tipo === 'p' ? d.p : result.tipo === 'np' ? d.np : result.tipo === 'u' ? d.u : d.c;
+              const maxVal = result.tipo === 'p' ? max.p : result.tipo === 'np' ? max.np : result.tipo === 'u' ? max.u : max.c;
+              return val > maxVal ? d : max;
+            }, oocAboveUCL[0]);
+            const worstVal = result.tipo === 'p' ? (worstPt.p * 100).toFixed(2) + '%' : result.tipo === 'np' ? worstPt.np : result.tipo === 'u' ? worstPt.u.toFixed(4) : worstPt.c;
+            lcsConclusion = `¡Alerta de Calidad! Se detectan ${oocAboveUCL.length} subgrupos superando el Límite de Control Superior (LCS = ${uclVal.toFixed(4)}) en los subgrupos ${oocAboveUCL.map(d => d.sg).join(', ')}. El punto crítico de mayor rechazo corresponde al subgrupo ${worstPt.sg} con una tasa/cantidad de ${worstVal}. Estos picos representan anomalías severas (causas especiales perjudiciales) que exigen detener el flujo de producto y corregir la causa de inmediato.`;
+          } else {
+            lcsConclusion = `El nivel de calidad es estable respecto al Límite de Control Superior. Ninguno de los subgrupos supera el LCS de ${uclVal.toFixed(4)}. Esto confirma que la fracción de defectos se mantiene baja de forma sostenida, sin dispararse en ningún lote analizado.`;
+          }
+
+          let estabilidadConclusion = '';
+          if (isControlled) {
+            estabilidadConclusion = `El proceso de atributos ${result.tipo.toUpperCase()} demuestra un estado de control estadístico estable, oscilando armoniosamente alrededor del promedio de ${lcVal.toFixed(4)}. Esto indica que la variabilidad es puramente debida a causas comunes del sistema, sin presencia de perturbaciones externas o eventos imprevistos.`;
+          } else {
+            estabilidadConclusion = `El proceso de atributos se encuentra fuera de control estadístico debido a ${oocAboveUCL.length + oocBelowLCL.length + activeNelsonAlerts.length} alarmas/puntos fuera de los límites. La inestabilidad activa en el gráfico ${result.tipo.toUpperCase()} confirma que causas especiales de variación están afectando la homogeneidad del lote, haciendo el desempeño del proceso totalmente impredecible.`;
           }
 
           return (
@@ -911,6 +952,30 @@ export default function AtributosPage() {
                   </div>
                 </div>
               )}
+
+              {/* Conclusiones de calidad por atributos */}
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.08)', marginBottom: 12 }}>
+                <div className="print-text-dark" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--green-light)', marginBottom: 8 }}>Conclusiones de Control de Calidad por Atributos:</div>
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', marginBottom: 12 }}>
+                  <div style={{ fontSize: '12.5px', lineHeight: 1.6, color: 'var(--text-primary)' }}>
+                    🎯 <strong>Análisis e Interpretación del Gráfico {result.tipo.toUpperCase()}:</strong>
+                    <ul style={{ margin: '8px 0 0 0', paddingLeft: 18, color: 'var(--text-muted)', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <li>
+                        <strong>Interpretación del Límite de Control Inferior (LCI):</strong>{' '}
+                        {lciConclusion}
+                      </li>
+                      <li>
+                        <strong>Interpretación del Límite de Control Superior (LCS):</strong>{' '}
+                        {lcsConclusion}
+                      </li>
+                      <li>
+                        <strong>Estado de Estabilidad:</strong>{' '}
+                        {estabilidadConclusion}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
 
               {/* Sugerencias Agrónomas */}
               <div>

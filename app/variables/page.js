@@ -522,19 +522,9 @@ export default function VariablesPage() {
                   <YAxis stroke="var(--text-muted)" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} domain={domainX} allowDataOverflow={true} />
                   <Tooltip content={<CustomTooltip isXBar={true} />} />
                   
-                  {/* Nelson zones boundaries (faint dashed lines) */}
-                  {sigmaX > 0 && (
-                    <>
-                      <ReferenceLine y={result.Xbarbar + sigmaX} stroke="rgba(16,185,129,0.2)" strokeDasharray="2 2" strokeWidth={1} label={{ value: '+1σ', fill: 'var(--text-muted)', fontSize: 7, position: 'right', offset: 5 }} />
-                      <ReferenceLine y={result.Xbarbar - sigmaX} stroke="rgba(16,185,129,0.2)" strokeDasharray="2 2" strokeWidth={1} label={{ value: '-1σ', fill: 'var(--text-muted)', fontSize: 7, position: 'right', offset: 5 }} />
-                      <ReferenceLine y={result.Xbarbar + 2 * sigmaX} stroke="rgba(16,185,129,0.2)" strokeDasharray="2 2" strokeWidth={1} label={{ value: '+2σ', fill: 'var(--text-muted)', fontSize: 7, position: 'right', offset: 5 }} />
-                      <ReferenceLine y={result.Xbarbar - 2 * sigmaX} stroke="rgba(16,185,129,0.2)" strokeDasharray="2 2" strokeWidth={1} label={{ value: '-2σ', fill: 'var(--text-muted)', fontSize: 7, position: 'right', offset: 5 }} />
-                    </>
-                  )}
-
-                  <ReferenceLine y={result.UCL_X} stroke="#ef4444" strokeWidth={2} />
-                  <ReferenceLine y={result.Xbarbar} stroke="var(--green-primary)" strokeWidth={2} />
-                  <ReferenceLine y={result.LCL_X} stroke="#ef4444" strokeWidth={2} />
+                  <ReferenceLine y={result.Xbarbar} stroke="var(--green-primary)" strokeWidth={2} label={{ value: `LC: ${result.Xbarbar.toFixed(3)}`, fill: 'var(--green-primary)', fontSize: 10, position: 'right', offset: 5 }} />
+                  <ReferenceLine y={result.UCL_X} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 4" label={{ value: `LCS: ${result.UCL_X.toFixed(3)}`, fill: '#ef4444', fontSize: 10, position: 'right', offset: 5 }} />
+                  <ReferenceLine y={result.LCL_X} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 4" label={{ value: `LCI: ${result.LCL_X.toFixed(3)}`, fill: '#ef4444', fontSize: 10, position: 'right', offset: 5 }} />
                   <Line type="monotone" dataKey="media" stroke="var(--green-light)" strokeWidth={2} dot={<CustomDot isXChart={true} normalColor="var(--green-light)" />} name="X̄" />
                 </LineChart>
               </ResponsiveContainer>
@@ -562,9 +552,9 @@ export default function VariablesPage() {
                   <XAxis dataKey="sg" stroke="var(--text-muted)" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
                   <YAxis stroke="var(--text-muted)" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} domain={domainR} allowDataOverflow={true} />
                   <Tooltip content={<CustomTooltip isXBar={false} />} />
-                  <ReferenceLine y={result.UCL_R} stroke="#ef4444" strokeWidth={2} />
-                  <ReferenceLine y={result.Rbar} stroke="#f59e0b" strokeWidth={2} />
-                  {result.LCL_R > 0 && <ReferenceLine y={result.LCL_R} stroke="#ef4444" strokeWidth={2} />}
+                  <ReferenceLine y={result.Rbar} stroke="#f59e0b" strokeWidth={2} label={{ value: `LC: ${result.Rbar.toFixed(3)}`, fill: '#f59e0b', fontSize: 10, position: 'right', offset: 5 }} />
+                  <ReferenceLine y={result.UCL_R} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 4" label={{ value: `LCS: ${result.UCL_R.toFixed(3)}`, fill: '#ef4444', fontSize: 10, position: 'right', offset: 5 }} />
+                  {result.LCL_R > 0 && <ReferenceLine y={result.LCL_R} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 4" label={{ value: `LCI: ${result.LCL_R.toFixed(3)}`, fill: '#ef4444', fontSize: 10, position: 'right', offset: 5 }} />}
                   <Line type="monotone" dataKey="rango" stroke="#f59e0b" strokeWidth={2} dot={<CustomDot oocKey="ooc_r" normalColor="#f59e0b" />} name={result.isXS ? 'S' : 'R'} />
                 </LineChart>
               </ResponsiveContainer>
@@ -579,6 +569,37 @@ export default function VariablesPage() {
           const activeNelsonAlerts = result.nelsonDiagnostic.activeAlerts;
           const isControlled = result.nelsonDiagnostic.isControlled && oocR.length === 0;
           const ampRel = ((result.UCL_X - result.LCL_X) / result.Xbarbar * 100).toFixed(1);
+
+          // Lógica para Conclusiones Dinámicas
+          const hasRule2 = activeNelsonAlerts.find(a => a.ruleId === 2);
+          const rule2Subgroups = hasRule2 ? hasRule2.subgrupos : [];
+          const hasOocX = oocX.length > 0;
+          const hasOocR = oocR.length > 0;
+
+          let mediaConclusion = '';
+          if (hasRule2) {
+            mediaConclusion = `En el gráfico de control X̄ analizado, se confirma un corrimiento de la media (desplazamiento sistemático). Se observa un patrón no aleatorio de racha sostenida con puntos consecutivos de un mismo lado de la línea central (${result.Xbarbar.toFixed(4)}) en los subgrupos ${rule2Subgroups.join(', ')}. Este comportamiento inusual indica una descalibración o variación en insumos/operarios que sacó al promedio de su centro de control.`;
+          } else if (hasOocX) {
+            const worstX = oocX.reduce((max, d) => Math.abs(d.media - result.Xbarbar) > Math.abs(max.media - result.Xbarbar) ? d : max, oocX[0]);
+            mediaConclusion = `En el gráfico X̄, no se evidencia un corrimiento sostenido de la media por rachas, pero sí se registran ${oocX.length} subgrupos que violan directamente los límites de control de la media (±3σ) (subgrupos: ${oocX.map(d => d.sg).join(', ')}). El punto con mayor desviación es de ${worstX.media.toFixed(4)} en el subgrupo ${worstX.sg}, excediendo la barrera de control.`;
+          } else {
+            mediaConclusion = `En el gráfico X̄, la media del proceso se encuentra estable y controlada. No se registra ningún corrimiento de la media (sin rachas de 9 o más puntos consecutivos a un lado de la LC) ni puntos fuera de las bandas de control [${result.LCL_X.toFixed(4)}, ${result.UCL_X.toFixed(4)}]. La media oscila con total normalidad alrededor de la línea central de ${result.Xbarbar.toFixed(4)}.`;
+          }
+
+          let variabilidadConclusion = '';
+          if (hasOocR) {
+            const worstR = oocR.reduce((max, d) => d.rango > max.rango ? d : max, oocR[0]);
+            variabilidadConclusion = `En el gráfico inferior ${result.isXS ? 'S' : 'R'}, la estabilidad de la variabilidad interna se encuentra alterada. Se detectan ${oocR.length} subgrupos con dispersión fuera de control (OOC) (subgrupos: ${oocR.map(d => d.sg).join(', ')}). El subgrupo crítico es el ${worstR.sg} con una dispersión de ${worstR.rango.toFixed(4)}, superando ampliamente el límite máximo permitido LCS de ${result.UCL_R.toFixed(4)}. Esto indica un desajuste mecánico o cambio brusco en la variación del lote en ese intervalo.`;
+          } else {
+            variabilidadConclusion = `En el gráfico inferior ${result.isXS ? 'S' : 'R'}, la dispersión interna es estable. Todos los subgrupos fluctúan dentro de los límites esperados (LCS = ${result.UCL_R.toFixed(4)}), promediando una variabilidad de ${result.Rbar.toFixed(4)}, lo cual valida la consistencia interna del proceso.`;
+          }
+
+          let capacidadConclusion = '';
+          if (isControlled) {
+            capacidadConclusion = `Al no registrarse inestabilidades estadísticas en los gráficos X̄ y ${result.isXS ? 'S' : 'R'} (proceso bajo control estadístico), la base de datos es 100% confiable. Es seguro y técnicamente correcto avanzar al análisis de capacidad (Cp y Cpk) en la sección correspondiente para predecir el cumplimiento de límites de especificación.`;
+          } else {
+            capacidadConclusion = `Debido a que el proceso actual presenta ${oocX.length + oocR.length + activeNelsonAlerts.length} alarmas de inestabilidad activa en las cartas de control, el cálculo de Capacidad del Proceso (Cp y Cpk) no es aconsejable. Proyectar capacidad en un proceso inestable arrojará estimaciones de rechazo erróneas; se debe estabilizar primero el proceso antes de certificar capacidad.`;
+          }
 
           return (
             <div className={`card ${!printConfig.nelson ? 'no-print' : ''}`} style={{ border: '1px solid var(--green-primary)', borderLeft: '4px solid var(--green-primary)', marginBottom: 16 }}>
@@ -667,7 +688,28 @@ export default function VariablesPage() {
               </div>
 
               {/* Recomendaciones de control industrial */}
-              <div>
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <div className="print-text-dark" style={{ fontSize: 13, fontWeight: 700, color: 'var(--green-light)', marginBottom: 8 }}>Conclusiones de Control de Calidad:</div>
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text-primary)' }}>
+                    🎯 <strong>Análisis e Interpretación de los Gráficos de Variables (X̄-R / X̄-S):</strong>
+                    <ul style={{ margin: '8px 0 0 0', paddingLeft: 18, color: 'var(--text-muted)', fontSize: 12.5, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <li>
+                        <strong>Detección de Desplazamientos (Corrimiento de la Media):</strong>{' '}
+                        {mediaConclusion}
+                      </li>
+                      <li>
+                        <strong>Estabilidad de la Variabilidad (Gráfico R o S):</strong>{' '}
+                        {variabilidadConclusion}
+                      </li>
+                      <li>
+                        <strong>Estado de Capacidad:</strong>{' '}
+                        {capacidadConclusion}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
                 <div className="print-text-dark" style={{ fontSize: 13, fontWeight: 700, color: 'var(--green-light)', marginBottom: 8 }}>Recomendaciones y Acciones de Control:</div>
                 <ul className="print-text-muted" style={{ margin: 0, paddingLeft: 18, color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.8 }}>
                   {isControlled ? (<>
@@ -677,7 +719,7 @@ export default function VariablesPage() {
                   </>) : (<>
                     <li><strong style={{ color: '#ef4444' }}>Detenga el cálculo de Cp/Cpk</strong>: El proceso es inestable y los índices de capacidad pueden arrojar estimaciones no confiables.</li>
                     <li>Investigue las causas asignables en los subgrupos marcados. Los patrones Nelson sugieren el origen:</li>
-                    {activeNelsonAlerts.some(a => a.ruleId === 2) && <li><strong>Racha de Media (Regla 2):</strong> Indica un cambio súbito en el promedio. Investigue cambios en operarios, lotes de materia prima o nuevas máquinas.</li>}
+                    {activeNelsonAlerts.some(a => a.ruleId === 2) && <li><strong>Racha de Media (Regla 2):</strong> Indica un cambio súbito o corrimiento sostenido de la media. Investigue cambios en operarios, lotes de materia prima o nuevas máquinas.</li>}
                     {activeNelsonAlerts.some(a => a.ruleId === 3) && <li><strong>Tendencia (Regla 3):</strong> Apunta a cambios paulatinos. Investigue desgaste de cuchillas, descalibración lenta de sensores, acumulación de calor o fatiga.</li>}
                     {activeNelsonAlerts.some(a => a.ruleId === 5 || a.ruleId === 6) && <li><strong>Desviaciones de Sigma (Reglas 5 y 6):</strong> Indican un aumento de la dispersión general. Verifique inestabilidad en las condiciones iniciales del proceso.</li>}
                   </>)}
