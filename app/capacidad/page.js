@@ -504,12 +504,12 @@ export default function CapacidadPage() {
             <div className={`${!printConfig.stats ? 'no-print' : ''}`} style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
               {[
                 { label: 'Media (X̄)', val: result.mean.toFixed(4) },
-                { label: 'Sigma (σ)', val: result.sigma.toFixed(4) },
-                { label: 'LIE', val: result.lie },
-                { label: 'LSE', val: result.lse },
+                { label: 'σ Subgrupos (Corto Plazo)', val: result.sigmaWithin.toFixed(4) },
+                { label: 'σ Global (Largo Plazo)', val: result.sigma.toFixed(4) },
+                { label: 'Límites [LIE, LSE]', val: `[${result.lie}, ${result.lse}]` },
                 { label: 'PPM Estimado', val: ppm.toLocaleString(), color: ppm < 6210 ? 'var(--green-light)' : '#ef4444' },
               ].map((s, i) => (
-                <div key={i} className="card" style={{ padding: '10px 16px', flex: 1, minWidth: 100, textAlign: 'center' }}>
+                <div key={i} className="card" style={{ padding: '10px 16px', flex: 1, minWidth: 120, textAlign: 'center' }}>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>{s.label}</div>
                   <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'JetBrains Mono', color: s.color || 'var(--text-primary)' }}>{s.val}</div>
                 </div>
@@ -547,7 +547,11 @@ export default function CapacidadPage() {
                           : 'El proceso NO es capaz — se generan productos fuera de especificación'}
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                      <strong>Cp = {result.Cp.toFixed(3)}</strong> (potencial) · <strong>Cpk = {result.Cpk.toFixed(3)}</strong> (real) · Nivel sigma ≈ <strong>{sigmaLevel}σ</strong>
+                      <strong>Capacidad de Corto Plazo (Subgrupos):</strong> Cp = <strong>{result.Cp.toFixed(3)}</strong> · Cpk = <strong>{result.Cpk.toFixed(3)}</strong> (usando σ_within = {result.sigmaWithin.toFixed(4)})
+                      <br />
+                      <strong>Desempeño de Largo Plazo (Global):</strong> Pp = <strong>{result.Pp.toFixed(3)}</strong> · Ppk = <strong>{result.Ppk.toFixed(3)}</strong> (usando σ_global = {result.sigma.toFixed(4)})
+                      <br />
+                      Nivel sigma ≈ <strong>{sigmaLevel}σ</strong>
                       <br />
                       {centered
                         ? 'El proceso está centrado respecto a los límites de especificación (Cp ≈ Cpk).'
@@ -560,12 +564,12 @@ export default function CapacidadPage() {
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Interpretación de Índices:</div>
                     <div style={{ display: 'grid', gap: 6 }}>
                       {[
-                        { idx: 'Cp', val: result.Cp, desc: 'Potencial del proceso — relación entre tolerancia especificada y variación del proceso (6σ). No considera el centrado.' },
-                        { idx: 'Cpk', val: result.Cpk, desc: 'Capacidad real — considera tanto la variación como el centrado del proceso. Es el índice más importante.' },
-                        { idx: 'Cpu', val: result.Cpu, desc: 'Capacidad hacia el límite superior. Si Cpu < Cpk, el proceso tiende a superar el LSE.' },
-                        { idx: 'Cpl', val: result.Cpl, desc: 'Capacidad hacia el límite inferior. Si Cpl < Cpk, el proceso tiende a caer bajo el LIE.' },
-                        { idx: 'Pp', val: result.Pp, desc: 'Desempeño total del proceso (usa desviación global). Útil cuando el proceso no está necesariamente bajo control estadístico.' },
-                        { idx: 'Ppk', val: result.Ppk, desc: 'Desempeño real considerando centrado y variación global. Ideal para estudios de larga duración.' },
+                        { idx: 'Cp', val: result.Cp, desc: 'Capacidad potencial — relación entre la tolerancia y la variación de corto plazo (6 * σ_within). No considera el centrado.' },
+                        { idx: 'Cpk', val: result.Cpk, desc: 'Capacidad real — considera tanto la variación de corto plazo (σ_within) como el centrado del proceso.' },
+                        { idx: 'Cpu', val: result.Cpu, desc: 'Capacidad hacia el límite superior usando σ_within. Si Cpu < Cpk, el proceso tiende a superar el LSE.' },
+                        { idx: 'Cpl', val: result.Cpl, desc: 'Capacidad hacia el límite inferior usando σ_within. Si Cpl < Cpk, el proceso tiende a caer bajo el LIE.' },
+                        { idx: 'Pp', val: result.Pp, desc: 'Desempeño potencial de largo plazo — relación entre la tolerancia y la variación global (6 * σ_global).' },
+                        { idx: 'Ppk', val: result.Ppk, desc: 'Desempeño real de largo plazo — considera la variación global (σ_global) y el centrado del proceso.' },
                       ].map((s, i) => {
                         const ok = s.val >= 1.33; const marginal = s.val >= 1;
                         const color = ok ? 'var(--green-light)' : marginal ? '#f59e0b' : '#ef4444';
