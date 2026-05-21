@@ -103,7 +103,7 @@ function safeSanitize(r) {
   };
 }
 
-// Carga segura de registros con auto-siembra eagerly de inmediato
+// Carga segura de registros sin auto-siembra de demostración
 function getSafeRecords() {
   if (typeof window === 'undefined') return [];
   try {
@@ -121,94 +121,11 @@ function getSafeRecords() {
     let clean = parsed
       .map(safeSanitize)
       .filter(Boolean)
-      .filter(r => !r.isDemo && !r.id.startsWith('demo_')); // Filtrar siempre demos de presets antiguos
+      .filter(r => !r.isDemo && !r.id.startsWith('demo_') && !r.id.startsWith('seeded_')); // Filtrar siempre demos y datos sembrados
 
-    // Sembramos los registros predeterminados individuales si faltan
-    const seededKeys = ['seeded_aguacate', 'seeded_aloe', 'seeded_manzanilla', 'seeded_tomate'];
-    const missingKeys = seededKeys.filter(key => !clean.some(r => r && r.id === key));
-    if (missingKeys.length > 0) {
-      const seededRecordsMap = {
-        seeded_aguacate: {
-          id: 'seeded_aguacate',
-          producto: 'Aguacate Hass',
-          tipo: 'Fruta',
-          variableName: 'Peso',
-          unidad: 'g',
-          analista: 'Carlos Mendoza',
-          fecha: '2026-05-01',
-          lse: '280',
-          lie: '180',
-          lseNum: 280,
-          lieNum: 180,
-          subgruposData: aguacatePeso.subgrupos,
-          isAtributo: false,
-          tipoGrafico: 'XR',
-          estado: 'Analizado',
-          notes: 'Muestra histórica de control de variables (peso de frutos).'
-        },
-        seeded_aloe: {
-          id: 'seeded_aloe',
-          producto: 'Aloe Vera',
-          tipo: 'Planta Medicinal',
-          variableName: 'Altura de Planta',
-          unidad: 'cm',
-          analista: 'Laura Gómez',
-          fecha: '2026-05-05',
-          lse: '55',
-          lie: '25',
-          lseNum: 55,
-          lieNum: 25,
-          subgruposData: aloeAltura.subgrupos,
-          isAtributo: false,
-          tipoGrafico: 'XR',
-          estado: 'Analizado',
-          notes: 'Muestra histórica de control de variables (altura de plantas).'
-        },
-        seeded_manzanilla: {
-          id: 'seeded_manzanilla',
-          producto: 'Manzanilla Alemana',
-          tipo: 'Planta Medicinal',
-          variableName: 'Flores con defectos',
-          unidad: '',
-          analista: 'Ana Torres',
-          fecha: '2026-05-10',
-          lse: '-',
-          lie: '-',
-          lseNum: null,
-          lieNum: null,
-          subgruposData: manzanillaP.subgrupos,
-          isAtributo: true,
-          tipoGrafico: 'p',
-          estado: 'Analizado',
-          notes: 'Muestra histórica de control de atributos (flores defectuosas).'
-        },
-        seeded_tomate: {
-          id: 'seeded_tomate',
-          producto: 'Tomate Chonto',
-          tipo: 'Hortaliza',
-          variableName: 'Manchas / Lesiones',
-          unidad: '',
-          analista: 'Pedro Rivas',
-          fecha: '2026-05-12',
-          lse: '-',
-          lie: '-',
-          lseNum: null,
-          lieNum: null,
-          subgruposData: tomateDefectos.subgrupos,
-          isAtributo: true,
-          tipoGrafico: 'c',
-          estado: 'Analizado',
-          notes: 'Muestra histórica de control de atributos (defectos por lote).'
-        }
-      };
-
-      const newSeeded = missingKeys.map(k => seededRecordsMap[k]).map(safeSanitize).filter(Boolean);
-      clean = [...clean, ...newSeeded];
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
-    }
     return clean;
   } catch (e) {
-    console.error('Error al parsear/sembrar localStorage:', e);
+    console.error('Error al parsear localStorage:', e);
     return [];
   }
 }
