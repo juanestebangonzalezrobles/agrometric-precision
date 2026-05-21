@@ -71,8 +71,9 @@ export default function AtributosPage() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const records = JSON.parse(raw);
-        const attrRecords = records.filter(r => r.subgruposData && r.subgruposData.length > 0 && r.isAtributo);
+        let records = JSON.parse(raw);
+        if (!Array.isArray(records)) records = [];
+        const attrRecords = records.filter(r => r && r.subgruposData && r.subgruposData.length > 0 && r.isAtributo);
         setUserRecords(attrRecords);
         if (attrRecords.length > 0) {
           setPreset('user_0');

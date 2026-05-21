@@ -13,7 +13,8 @@ function loadRecords() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
       return [];
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -21,7 +22,8 @@ function loadRecords() {
 
 function saveRecords(records) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  const safeRecords = Array.isArray(records) ? records : [];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(safeRecords));
 }
 
 
@@ -43,11 +45,11 @@ export default function MuestrasPage() {
 
   useEffect(() => {
     let loaded = loadRecords();
-    if (loaded.some(r => r.isDemo || r.id?.startsWith('demo_'))) {
-      loaded = loaded.filter(r => !r.isDemo && !r.id?.startsWith('demo_'));
+    if (Array.isArray(loaded) && loaded.some(r => r && (r.isDemo || r.id?.startsWith('demo_')))) {
+      loaded = loaded.filter(r => r && !r.isDemo && !r.id?.startsWith('demo_'));
       saveRecords(loaded);
     }
-    setRecords(loaded);
+    setRecords(Array.isArray(loaded) ? loaded : []);
   }, []);
 
   const initMatrix = () => {

@@ -56,16 +56,20 @@ export default function NormalidadClient() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      const records = raw ? JSON.parse(raw) : [];
-      const variables = records.filter(r => r.subgruposData && r.subgruposData.length > 0 && !r.isAtributo);
+      let records = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(records)) records = [];
+      const variables = records.filter(r => r && r.subgruposData && Array.isArray(r.subgruposData) && r.subgruposData.length > 0 && !r.isAtributo);
       setUserRecords(variables);
-      if (variables.length > 0) {
+      if (variables.length > 0 && variables[0]?.subgruposData) {
         setSelected('user_0');
         setCustomMode(false);
         const vals = variables[0].subgruposData.flat().map(v => parseFloat(v)).filter(v => !isNaN(v));
         if (vals.length >= 4) runAnalysis(vals);
       }
-    } catch { setUserRecords([]); }
+    } catch (err) {
+      console.error(err);
+      setUserRecords([]);
+    }
   }, []);
 
   const runAnalysis = (values, applyBoxCox = false) => {

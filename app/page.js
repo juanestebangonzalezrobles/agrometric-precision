@@ -95,10 +95,11 @@ export default function Dashboard() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       let loaded = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(loaded)) loaded = [];
       
       // Limpieza proactiva de datos demo
-      if (loaded.some(r => r.isDemo || r.id?.startsWith('demo_'))) {
-        loaded = loaded.filter(r => !r.isDemo && !r.id?.startsWith('demo_'));
+      if (loaded.some(r => r && (r.isDemo || r.id?.startsWith('demo_')))) {
+        loaded = loaded.filter(r => r && !r.isDemo && !r.id?.startsWith('demo_'));
         localStorage.setItem(STORAGE_KEY, JSON.stringify(loaded));
       }
       

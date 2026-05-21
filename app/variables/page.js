@@ -58,8 +58,9 @@ export default function VariablesPage() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      const records = raw ? JSON.parse(raw) : [];
-      const variables = records.filter(r => r.subgruposData && r.subgruposData.length > 0 && !r.isAtributo);
+      let records = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(records)) records = [];
+      const variables = records.filter(r => r && r.subgruposData && r.subgruposData.length > 0 && !r.isAtributo);
       setUserRecords(variables);
       if (variables.length > 0) {
         setSelected('user_0');
