@@ -28,6 +28,52 @@ Cuando se producen frutas, hortalizas o plantas medicinales, cada pieza es difer
     `,
   },
   {
+    id: 'manual',
+    icon: '🚀',
+    title: 'Guía de Inicio Rápido (Paso a Paso)',
+    color: '#3b82f6',
+    content: `
+¡Bienvenido a **AgroMetric Precision**! Esta guía paso a paso te enseñará a dominar todas las herramientas de la plataforma para controlar la calidad de tu producción agrícola o agroindustrial desde cero.
+
+### Paso 1: Registrar y Administrar tus Muestras
+Todo análisis comienza en el módulo **Registro de Muestras**:
+- **Crear un lote:** Haz clic en **"+ Nueva Entrada"**, introduce el nombre del lote, la variable a medir (ej: Peso, Acidez), el analista, los límites de especificación (LIE y LSE) definidos por tu cliente, y el tamaño de subgrupo (n).
+- **Ver y editar datos:** Haz clic en el botón de lápiz **"✏️ Editar / Ver Datos"** de cualquier registro. Se abrirá la matriz bidimensional de datos.
+- **Editar valores:** Puedes escribir directamente sobre cualquier celda numérica de la matriz para corregir errores.
+- **Añadir subgrupos:** Haz clic en **"+ Añadir Subgrupo"** en la parte inferior para agregar una nueva fila de mediciones.
+- **Eliminar filas/lotes:** Usa los botones de papelera **"Eliminar"** para descartar subgrupos específicos o lotes enteros.
+- **Guardar:** Presiona **"Guardar Cambios"** y toda la plataforma se recalculará instantáneamente.
+
+### Paso 2: Evaluar la Estabilidad (Gráficos de Control)
+Ve al módulo **Gráficos X̄-R / X̄-S** o **Gráficos P, NP, C, U**:
+- **Elegir tu lote:** Selecciona tu producto en el buscador superior.
+- **Configurar tu gráfico (Variables):** Usa **X̄-R (Rango)** si el tamaño de tu subgrupo es pequeño (n ≤ 10). Usa **X̄-S (Desviación)** si tu subgrupo es grande (n > 10).
+- **Detectar alertas rojas (Nelson):** El sistema resaltará automáticamente en rojo brillante con etiquetas (como R1, R2, R5) cualquier punto inestable.
+- **Leer el Diagnóstico:** En la parte inferior, lee el **Diagnóstico Técnico consolidado** con recomendaciones sobre qué regla se violó y su causa probable.
+
+### Paso 3: Verificar Supuestos (Pruebas de Normalidad)
+Para que los cálculos de capacidad sean 100% confiables, ve a **Pruebas de Normalidad**:
+- **Revisar el valor-p (Anderson-Darling):** Si el **valor-p > 0.05** (verde), tus datos son normales. Si el **valor-p ≤ 0.05** (amarillo/rojo), tus datos no siguen la campana de Gauss.
+- **¿Qué hacer si no son normales?** Marca la casilla **"Activar Transformación Box-Cox"**. La app probará automáticamente cientos de lambdas (λ) y transformará matemáticamente tus datos para hacerlos normales y válidos.
+
+### Paso 4: Medir tu Calidad (Índices de Capacidad)
+En el módulo **Índices de Capacidad** sabrás si estás cumpliendo los requisitos del cliente:
+- **Analizar el Cpk:** Si **Cpk < 1.0**: Tu proceso no es capaz y producirá piezas defectuosas (PPM alto). Si **Cpk ≥ 1.33**: Tu proceso es capaz y está bajo control satisfactorio.
+- **PPM estimadas:** El panel te indicará cuántos defectos se esperan producir por cada millón de unidades.
+
+### Paso 5: Encontrar y Corregir la Causa Raíz
+Cuando detectes inestabilidad o bajo Cpk, usa las herramientas de mejora:
+- **Diagrama de Pareto:** Identifica cuáles defectos causan el 80% del problema (barras en rojo). Concéntrate en resolver esos.
+- **Diagrama de Ishikawa:** En el panel interactivo, escribe tu problema en la cabeza del pescado y haz una lluvia de ideas con tu equipo categorizando las causas en las **6M** (Mano de Obra, Maquinaria, Materiales, Métodos, Medición y Medio Ambiente).
+
+### Paso 6: Generar un Reporte Profesional para tu Cliente
+Una vez completado el análisis:
+- Haz clic en **"Generar Reporte PDF"** (disponible en variables y atributos).
+- Selecciona mediante checkboxes solo las partes que quieres incluir en el documento.
+- Presiona **"Imprimir / Guardar PDF"**. En el navegador, selecciona "Guardar como PDF" y activa **"Gráficos de fondo"**.
+    `,
+  },
+  {
     id: 'xbarr',
     icon: '📊',
     title: 'Gráficos X̄-R (Variables Continuas)',
