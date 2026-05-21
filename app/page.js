@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   TrendingUp,
   Binary,
-  ShieldAlert,
   Sliders,
   BarChart3,
   ClipboardList,
@@ -38,7 +37,6 @@ const alerts = [
 const modules = [
   { href: '/variables', icon: TrendingUp, title: 'Control de Variables', desc: 'Gráficos X̄-R y X̄-S para datos continuos' },
   { href: '/atributos', icon: Binary, title: 'Control de Atributos', desc: 'Gráficos P, NP, C, U para conteos' },
-  { href: '/normalidad', icon: ShieldAlert, title: 'Prueba de Normalidad', desc: 'Anderson-Darling, histograma, Q-Q plot' },
   { href: '/capacidad', icon: Sliders, title: 'Capacidad del Proceso', desc: 'Cp, Cpk, Pp, Ppk con visualización' },
   { href: '/pareto', icon: BarChart3, title: 'Diagrama de Pareto', desc: 'Identificar defectos vitales (80/20)' },
   { href: '/muestras', icon: ClipboardList, title: 'Registro de Muestras', desc: 'Ingresar datos manual o por archivo' },
