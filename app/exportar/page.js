@@ -1,6 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import * as XLSX from 'xlsx';
 import { aguacatePeso, aloeAltura, calcXbarR, calcP, calcCapability, manzanillaP, tomateDefectos } from '../../lib/data';
 import { 
   FolderOpen, 
@@ -32,8 +33,8 @@ function safeSanitize(r) {
   const tipoGrafico = typeof r.tipoGrafico === 'string' ? r.tipoGrafico : 'p';
   const lse = r.lse !== undefined && r.lse !== null ? String(r.lse).trim() : '-';
   const lie = r.lie !== undefined && r.lie !== null ? String(r.lie).trim() : '-';
-  const lseNum = lse !== '-' ? parseFloat(lse) : null;
-  const lieNum = lie !== '-' ? parseFloat(lie) : null;
+  const lseNum = lse !== '-' ? parseFloat(lse.replace(',', '.')) : null;
+  const lieNum = lie !== '-' ? parseFloat(lie.replace(',', '.')) : null;
   const estado = typeof r.estado === 'string' ? r.estado : 'Analizado';
   
   let subgruposData = [];
@@ -246,31 +247,117 @@ export default function ExportarPage() {
 
   const parseCSV = (text) => {
     try {
-      const lines = text.trim().split('\n').map(l => l.split(/[,;\t]/));
-      const headers = lines[0].map(h => h.trim().replace(/"/g, ''));
-      const rows = lines.slice(1).map(l => {
+      // 1. Detectar delimitador de forma inteligente buscando la cabecera
+      const firstLine = text.split('\n')[0] || '';
+      let delimiter = ',';
+      
+      const countSemicolons = (firstLine.match(/;/g) || []).length;
+      const countTabs = (firstLine.match(/\t/g) || []).length;
+      const countCommas = (firstLine.match(/,/g) || []).length;
+      
+      if (countSemicolons > countTabs && countSemicolons > countCommas) {
+        delimiter = ';';
+      } else if (countTabs > countSemicolons && countTabs > countCommas) {
+        delimiter = '\t';
+      } else {
+        delimiter = ',';
+      }
+      
+      // 2. Parsear celdas respetando comillas dobles y el delimitador
+      const parseLine = (line) => {
+        const result = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === delimiter && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        result.push(current.trim());
+        return result.map(v => v.replace(/^"|"$/g, ''));
+      };
+
+      const rawLines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      if (rawLines.length === 0) {
+        setParseError('El archivo CSV está vacío.');
+        return;
+      }
+      
+      const headers = parseLine(rawLines[0]);
+      const rows = rawLines.slice(1).map(l => {
+        const columns = parseLine(l);
         const obj = {};
-        l.forEach((v, i) => { obj[headers[i]] = v?.trim().replace(/"/g, ''); });
+        headers.forEach((h, i) => {
+          obj[h] = columns[i] !== undefined ? columns[i] : '';
+        });
         return obj;
       }).filter(r => Object.values(r).some(v => v));
+      
       setParsedData({ headers, rows }); 
       setParseError('');
       setShowSuccess(false);
       setImportedRecord(null);
     } catch (e) {
-      setParseError('Error al parsear el archivo. Verifique el formato.');
+      console.error(e);
+      setParseError('Error al parsear el archivo CSV. Verifique el formato.');
     }
   };
 
   const handleFile = (file) => {
     if (!file) return;
     setImportFile(file);
-    const reader = new FileReader();
-    reader.onload = e => parseCSV(e.target.result);
-    reader.readAsText(file, 'UTF-8');
+    const extension = file.name.split('.').pop().toLowerCase();
+    
+    if (extension === 'xlsx' || extension === 'xls') {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+          if (rows.length === 0) {
+            setParseError('El archivo Excel está vacío.');
+            return;
+          }
+          
+          const headers = rows[0].map(h => String(h).trim());
+          const parsedRows = rows.slice(1).map(r => {
+            const obj = {};
+            headers.forEach((h, i) => {
+              const cellVal = r[i];
+              obj[h] = cellVal !== undefined && cellVal !== null ? String(cellVal).trim() : '';
+            });
+            return obj;
+          }).filter(r => Object.values(r).some(v => v));
+          
+          setParsedData({ headers, rows: parsedRows });
+          setParseError('');
+          setShowSuccess(false);
+          setImportedRecord(null);
+        } catch (err) {
+          console.error(err);
+          setParseError('Error al leer el archivo Excel (.xlsx/.xls). Asegúrese de que no esté dañado.');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = e => parseCSV(e.target.result);
+      reader.readAsText(file, 'UTF-8');
+    }
   };
 
-  // Mapeador robusto de filas CSV a subgrupos estadísticos
+  // Mapeador robusto de filas a subgrupos estadísticos con reemplazo de coma decimal por punto
   const mapCsvToSubgrupos = () => {
     if (!parsedData || !parsedData.rows.length) return [];
 
@@ -288,7 +375,8 @@ export default function ExportarPage() {
 
       return parsedData.rows.map(row => {
         return cols.map(c => {
-          const val = parseFloat(row[c]);
+          const rawVal = row[c] !== undefined && row[c] !== null ? String(row[c]).replace(',', '.') : '';
+          const val = parseFloat(rawVal);
           return isNaN(val) ? 0 : val;
         });
       });
@@ -297,8 +385,11 @@ export default function ExportarPage() {
       const keyNp = colNp || parsedData.headers[1] || parsedData.headers[0];
 
       return parsedData.rows.map(row => {
-        const nVal = Math.max(1, parseInt(row[keyN]) || 100);
-        const npOrCVal = Math.max(0, parseInt(row[keyNp]) || 0);
+        const nStr = row[keyN] !== undefined && row[keyN] !== null ? String(row[keyN]).replace(',', '.') : '';
+        const npOrCStr = row[keyNp] !== undefined && row[keyNp] !== null ? String(row[keyNp]).replace(',', '.') : '';
+        
+        const nVal = Math.max(1, Math.round(parseFloat(nStr)) || 100);
+        const npOrCVal = Math.max(0, Math.round(parseFloat(npOrCStr)) || 0);
 
         if (chartType === 'p' || chartType === 'np') {
           return { n: nVal, np: npOrCVal };
@@ -405,9 +496,9 @@ export default function ExportarPage() {
         {tab === 'importar' && (
           <>
             <div className="card" style={{ marginBottom: 16 }}>
-              <div className="section-title" style={{ marginBottom: 8 }}>Importar Datos desde CSV / Excel (guardado como CSV)</div>
+              <div className="section-title" style={{ marginBottom: 8 }}>Importar Datos desde Archivos Excel o CSV</div>
               <div className="section-subtitle" style={{ marginBottom: 16 }}>
-                El archivo debe tener encabezados en la primera fila. Formatos: .csv, .txt separado por comas o punto y coma
+                El archivo debe tener encabezados en la primera fila. Formatos soportados: Excel (.xlsx, .xls) o CSV (.csv, .txt)
               </div>
 
               <div
@@ -424,9 +515,9 @@ export default function ExportarPage() {
                   {importFile ? importFile.name : 'Arrastra tu archivo aquí'}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  {importFile ? `${(importFile.size / 1024).toFixed(1)} KB` : 'o haz clic para seleccionar · CSV, TXT'}
+                  {importFile ? `${(importFile.size / 1024).toFixed(1)} KB` : 'o haz clic para seleccionar · Excel (.xlsx, .xls), CSV, TXT'}
                 </div>
-                <input ref={fileRef} type="file" accept=".csv,.txt" style={{ display: 'none' }}
+                <input ref={fileRef} type="file" accept=".csv,.txt,.xlsx,.xls" style={{ display: 'none' }}
                   onChange={e => handleFile(e.target.files[0])} />
               </div>
 
