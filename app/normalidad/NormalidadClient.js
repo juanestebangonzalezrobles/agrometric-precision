@@ -104,11 +104,12 @@ function getSafeRecords() {
       .filter(Boolean)
       .filter(r => !r.isDemo && !r.id.startsWith('demo_')); // Filtrar siempre demos de presets antiguos
 
-    // Si no contiene registros sembrados, sembramos de inmediato
-    const hasSeeded = clean.some(r => r && r.id && r.id.startsWith('seeded_'));
-    if (!hasSeeded) {
-      const seededRecords = [
-        {
+    // Sembramos los registros predeterminados individuales si faltan
+    const seededKeys = ['seeded_aguacate', 'seeded_aloe', 'seeded_manzanilla', 'seeded_tomate'];
+    const missingKeys = seededKeys.filter(key => !clean.some(r => r && r.id === key));
+    if (missingKeys.length > 0) {
+      const seededRecordsMap = {
+        seeded_aguacate: {
           id: 'seeded_aguacate',
           producto: 'Aguacate Hass',
           tipo: 'Fruta',
@@ -126,7 +127,7 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de variables (peso de frutos).'
         },
-        {
+        seeded_aloe: {
           id: 'seeded_aloe',
           producto: 'Aloe Vera',
           tipo: 'Planta Medicinal',
@@ -144,7 +145,7 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de variables (altura de plantas).'
         },
-        {
+        seeded_manzanilla: {
           id: 'seeded_manzanilla',
           producto: 'Manzanilla Alemana',
           tipo: 'Planta Medicinal',
@@ -162,7 +163,7 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de atributos (flores defectuosas).'
         },
-        {
+        seeded_tomate: {
           id: 'seeded_tomate',
           producto: 'Tomate Chonto',
           tipo: 'Hortaliza',
@@ -180,9 +181,10 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de atributos (defectos por lote).'
         }
-      ].map(safeSanitize).filter(Boolean);
+      };
 
-      clean = [...clean.filter(r => !r.id.startsWith('seeded_')), ...seededRecords];
+      const newSeeded = missingKeys.map(k => seededRecordsMap[k]).map(safeSanitize).filter(Boolean);
+      clean = [...clean, ...newSeeded];
       localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
     }
     return clean;
@@ -423,11 +425,54 @@ export default function NormalidadClient() {
         </div>
 
         {/* Box‑Cox tabs */}
-        {originalValues.length > 0 && Math.min(...originalValues) > 0 && (
-          <div className="tabs no-print">
-            <button className={`tab ${!isBoxCoxApplied ? 'active' : ''}`} onClick={() => runAnalysis(originalValues, false)}>Datos Originales</button>
-            <button className={`tab ${isBoxCoxApplied ? 'active' : ''}`} onClick={() => runAnalysis(originalValues, true)}>Transformación Box‑Cox (λ = {optLambda.toFixed(1)})</button>
-          </div>
+        {originalValues.length > 0 && (
+          <>
+            <div className="tabs no-print" style={{ marginBottom: 12 }}>
+              <button 
+                className={`tab ${!isBoxCoxApplied ? 'active' : ''}`} 
+                onClick={() => runAnalysis(originalValues, false)}
+              >
+                Datos Originales
+              </button>
+              {Math.min(...originalValues) > 0 ? (
+                <button 
+                  className={`tab ${isBoxCoxApplied ? 'active' : ''}`} 
+                  onClick={() => runAnalysis(originalValues, true)}
+                >
+                  Transformación Box‑Cox (λ = {optLambda.toFixed(1)})
+                </button>
+              ) : (
+                <button 
+                  className="tab" 
+                  disabled 
+                  style={{ opacity: 0.5, cursor: 'not-allowed', position: 'relative' }}
+                  title="No aplicable: requiere valores estrictamente positivos (>0)"
+                >
+                  Transformación Box‑Cox (No Aplicable)
+                </button>
+              )}
+            </div>
+
+            {/* Ficha explicativa si no es aplicable Box-Cox */}
+            {Math.min(...originalValues) <= 0 && (
+              <div className="no-print" style={{
+                background: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid #f59e0b',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                marginBottom: 16,
+                fontSize: '13px',
+                color: 'var(--text-muted)',
+                lineHeight: '1.5'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: '#f59e0b', marginBottom: 4 }}>
+                  ⚠️ Transformación Box‑Cox No Disponible
+                </div>
+                Matemáticamente, la transformación Box‑Cox requiere que todos los valores sean **estrictamente mayores a cero (&gt; 0)**, ya que utiliza logaritmos naturales y potencias complejas. 
+                El valor mínimo actual en su conjunto de datos es <strong>{Math.min(...originalValues)}</strong>.
+              </div>
+            )}
+          </>
         )}
 
         {/* Estadísticos descriptivos */}

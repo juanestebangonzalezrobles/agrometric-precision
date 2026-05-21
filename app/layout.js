@@ -84,11 +84,13 @@ export default function RootLayout({ children }) {
       }
       if (!Array.isArray(loaded)) loaded = [];
 
-      // Sembramos los 4 registros históricos de referencia si no existen en localStorage
-      const hasSeeded = loaded.some(r => r && r.id && r.id.startsWith('seeded_'));
-      if (!hasSeeded) {
-        const seededRecords = [
-          {
+      // Sembramos los 4 registros históricos de referencia individualmente si faltan
+      const seededKeys = ['seeded_aguacate', 'seeded_aloe', 'seeded_manzanilla', 'seeded_tomate'];
+      const missingKeys = seededKeys.filter(key => !loaded.some(r => r && r.id === key));
+      
+      if (missingKeys.length > 0) {
+        const seededRecordsMap = {
+          seeded_aguacate: {
             id: 'seeded_aguacate',
             producto: 'Aguacate Hass',
             tipo: 'Fruta',
@@ -106,7 +108,7 @@ export default function RootLayout({ children }) {
             estado: 'Analizado',
             notes: 'Muestra histórica de control de variables (peso de frutos).'
           },
-          {
+          seeded_aloe: {
             id: 'seeded_aloe',
             producto: 'Aloe Vera',
             tipo: 'Planta Medicinal',
@@ -124,7 +126,7 @@ export default function RootLayout({ children }) {
             estado: 'Analizado',
             notes: 'Muestra histórica de control de variables (altura de plantas).'
           },
-          {
+          seeded_manzanilla: {
             id: 'seeded_manzanilla',
             producto: 'Manzanilla Alemana',
             tipo: 'Planta Medicinal',
@@ -142,7 +144,7 @@ export default function RootLayout({ children }) {
             estado: 'Analizado',
             notes: 'Muestra histórica de control de atributos (flores defectuosas).'
           },
-          {
+          seeded_tomate: {
             id: 'seeded_tomate',
             producto: 'Tomate Chonto',
             tipo: 'Hortaliza',
@@ -160,11 +162,12 @@ export default function RootLayout({ children }) {
             estado: 'Analizado',
             notes: 'Muestra histórica de control de atributos (defectos por lote).'
           }
-        ];
+        };
 
-        // Combinamos preservando cualquier registro propio que el usuario ya haya cargado
-        const cleanExisting = loaded.filter(r => r && !r.id.startsWith('seeded_'));
-        localStorage.setItem(STORAGE_KEY, JSON.stringify([...cleanExisting, ...seededRecords]));
+        const newSeeded = missingKeys.map(k => seededRecordsMap[k]).filter(Boolean);
+        // Combinamos preservando los registros del usuario
+        const clean = [...loaded, ...newSeeded];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
         
         // Disparar evento para componentes que ya estén cargados
         window.dispatchEvent(new Event('storage'));

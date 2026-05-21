@@ -118,11 +118,12 @@ function getSafeRecords() {
       .filter(Boolean)
       .filter(r => !r.isDemo && !r.id.startsWith('demo_')); // Filtrar siempre demos de presets antiguos
 
-    // Si no contiene registros sembrados, sembramos de inmediato
-    const hasSeeded = clean.some(r => r && r.id && r.id.startsWith('seeded_'));
-    if (!hasSeeded) {
-      const seededRecords = [
-        {
+    // Sembramos los registros predeterminados individuales si faltan
+    const seededKeys = ['seeded_aguacate', 'seeded_aloe', 'seeded_manzanilla', 'seeded_tomate'];
+    const missingKeys = seededKeys.filter(key => !clean.some(r => r && r.id === key));
+    if (missingKeys.length > 0) {
+      const seededRecordsMap = {
+        seeded_aguacate: {
           id: 'seeded_aguacate',
           producto: 'Aguacate Hass',
           tipo: 'Fruta',
@@ -140,7 +141,7 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de variables (peso de frutos).'
         },
-        {
+        seeded_aloe: {
           id: 'seeded_aloe',
           producto: 'Aloe Vera',
           tipo: 'Planta Medicinal',
@@ -158,7 +159,7 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de variables (altura de plantas).'
         },
-        {
+        seeded_manzanilla: {
           id: 'seeded_manzanilla',
           producto: 'Manzanilla Alemana',
           tipo: 'Planta Medicinal',
@@ -176,7 +177,7 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de atributos (flores defectuosas).'
         },
-        {
+        seeded_tomate: {
           id: 'seeded_tomate',
           producto: 'Tomate Chonto',
           tipo: 'Hortaliza',
@@ -194,9 +195,10 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de atributos (defectos por lote).'
         }
-      ].map(safeSanitize).filter(Boolean);
+      };
 
-      clean = [...clean.filter(r => !r.id.startsWith('seeded_')), ...seededRecords];
+      const newSeeded = missingKeys.map(k => seededRecordsMap[k]).map(safeSanitize).filter(Boolean);
+      clean = [...clean, ...newSeeded];
       localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
     }
     return clean;

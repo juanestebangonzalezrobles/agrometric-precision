@@ -83,6 +83,7 @@ function safeSanitize(r) {
 }
 
 // Carga segura de registros con auto-siembra eagerly de inmediato
+// Carga segura de registros con auto-siembra eagerly de inmediato
 function getSafeRecords() {
   if (typeof window === 'undefined') return [];
   try {
@@ -102,11 +103,12 @@ function getSafeRecords() {
       .filter(Boolean)
       .filter(r => !r.isDemo && !r.id.startsWith('demo_')); // Filtrar siempre demos de presets antiguos
 
-    // Si no contiene registros sembrados, sembramos de inmediato
-    const hasSeeded = clean.some(r => r && r.id && r.id.startsWith('seeded_'));
-    if (!hasSeeded) {
-      const seededRecords = [
-        {
+    // Sembramos los registros predeterminados individuales si faltan
+    const seededKeys = ['seeded_aguacate', 'seeded_aloe', 'seeded_manzanilla', 'seeded_tomate'];
+    const missingKeys = seededKeys.filter(key => !clean.some(r => r && r.id === key));
+    if (missingKeys.length > 0) {
+      const seededRecordsMap = {
+        seeded_aguacate: {
           id: 'seeded_aguacate',
           producto: 'Aguacate Hass',
           tipo: 'Fruta',
@@ -124,7 +126,7 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de variables (peso de frutos).'
         },
-        {
+        seeded_aloe: {
           id: 'seeded_aloe',
           producto: 'Aloe Vera',
           tipo: 'Planta Medicinal',
@@ -142,7 +144,7 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de variables (altura de plantas).'
         },
-        {
+        seeded_manzanilla: {
           id: 'seeded_manzanilla',
           producto: 'Manzanilla Alemana',
           tipo: 'Planta Medicinal',
@@ -160,7 +162,7 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de atributos (flores defectuosas).'
         },
-        {
+        seeded_tomate: {
           id: 'seeded_tomate',
           producto: 'Tomate Chonto',
           tipo: 'Hortaliza',
@@ -178,9 +180,10 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de atributos (defectos por lote).'
         }
-      ].map(safeSanitize).filter(Boolean);
+      };
 
-      clean = [...clean.filter(r => !r.id.startsWith('seeded_')), ...seededRecords];
+      const newSeeded = missingKeys.map(k => seededRecordsMap[k]).map(safeSanitize).filter(Boolean);
+      clean = [...clean, ...newSeeded];
       localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
     }
     return clean;
@@ -229,6 +232,59 @@ const CustomDot = (props) => {
     );
   }
   return <circle key={`dot-c-normal-${payload.sg}`} cx={cx} cy={cy} r={4} fill={normalColor} stroke={normalColor} strokeWidth={1.5} />;
+};
+
+// Tooltip interactivo premium para gráficos de variables (Xbar y R/S)
+const CustomTooltip = ({ active, payload, label, isXBar = true }) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const value = isXBar ? data.media : data.rango;
+    const ucl = isXBar ? data.UCL_X : data.UCL_R;
+    const lcl = isXBar ? data.LCL_X : data.LCL_R;
+    const lc = isXBar ? data.Xbarbar : data.Rbar;
+    const valueLabel = isXBar ? 'Media (X̄)' : (payload[0].name || 'Variación');
+
+    const formatVal = (v) => {
+      if (typeof v !== 'number') return '-';
+      return v.toFixed(4);
+    };
+
+    return (
+      <div className="custom-tooltip" style={{
+        background: 'rgba(15, 23, 42, 0.95)',
+        backdropFilter: 'blur(8px)',
+        border: '1px solid var(--border)',
+        borderRadius: '8px',
+        padding: '10px 14px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+        fontSize: '12px',
+        fontFamily: 'Outfit, sans-serif'
+      }}>
+        <div style={{ fontWeight: 700, color: '#ffffff', marginBottom: 6, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 4 }}>
+          Subgrupo {label}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+            <span style={{ color: 'var(--green-light)', fontWeight: 600 }}>{valueLabel}:</span>
+            <span style={{ fontFamily: 'JetBrains Mono', color: '#ffffff', fontWeight: 700 }}>{formatVal(value)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginTop: 4 }}>
+            <span style={{ color: '#ef4444' }}>LCS (Sup):</span>
+            <span style={{ fontFamily: 'JetBrains Mono', color: '#ef4444' }}>{formatVal(ucl)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+            <span style={{ color: 'var(--green-primary)' }}>LC (Centro):</span>
+            <span style={{ fontFamily: 'JetBrains Mono', color: 'var(--green-primary)' }}>{formatVal(lc)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+            <span style={{ color: lcl > 0 ? '#ef4444' : 'var(--text-muted)' }}>LCI (Inf):</span>
+            <span style={{ fontFamily: 'JetBrains Mono', color: lcl > 0 ? '#ef4444' : 'var(--text-muted)' }}>{formatVal(lcl)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
 };
 
 export default function VariablesPage() {
@@ -547,7 +603,7 @@ export default function VariablesPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="sg" label={{ value: 'Subgrupo', position: 'insideBottom', offset: -2, fill: 'var(--text-muted)', fontSize: 11 }} stroke="var(--text-muted)" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
                   <YAxis stroke="var(--text-muted)" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} domain={domainX} allowDataOverflow={true} />
-                  <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+                  <Tooltip content={<CustomTooltip isXBar={true} />} />
                   
                   {/* Nelson zones boundaries (faint dashed lines) */}
                   {sigmaX > 0 && (
@@ -559,9 +615,9 @@ export default function VariablesPage() {
                     </>
                   )}
 
-                  <ReferenceLine y={result.UCL_X} stroke="#ef4444" strokeWidth={2} label={{ value: `LCS: ${result.UCL_X.toFixed(3)}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold', position: 'right' }} />
-                  <ReferenceLine y={result.Xbarbar} stroke="var(--green-primary)" strokeWidth={2} label={{ value: `LC: ${result.Xbarbar.toFixed(3)}`, fill: 'var(--green-primary)', fontSize: 10, fontWeight: 'bold', position: 'right' }} />
-                  <ReferenceLine y={result.LCL_X} stroke="#ef4444" strokeWidth={2} label={{ value: `LCI: ${result.LCL_X.toFixed(3)}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold', position: 'right' }} />
+                  <ReferenceLine y={result.UCL_X} stroke="#ef4444" strokeWidth={2} />
+                  <ReferenceLine y={result.Xbarbar} stroke="var(--green-primary)" strokeWidth={2} />
+                  <ReferenceLine y={result.LCL_X} stroke="#ef4444" strokeWidth={2} />
                   <Line type="monotone" dataKey="media" stroke="var(--green-light)" strokeWidth={2} dot={<CustomDot isXChart={true} normalColor="var(--green-light)" />} name="X̄" />
                 </LineChart>
               </ResponsiveContainer>
@@ -588,10 +644,10 @@ export default function VariablesPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="sg" stroke="var(--text-muted)" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
                   <YAxis stroke="var(--text-muted)" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} domain={domainR} allowDataOverflow={true} />
-                  <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
-                  <ReferenceLine y={result.UCL_R} stroke="#ef4444" strokeWidth={2} label={{ value: `LCS: ${result.UCL_R.toFixed(3)}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold', position: 'right' }} />
-                  <ReferenceLine y={result.Rbar} stroke="#f59e0b" strokeWidth={2} label={{ value: `LC: ${result.Rbar.toFixed(3)}`, fill: '#f59e0b', fontSize: 10, fontWeight: 'bold', position: 'right' }} />
-                  {result.LCL_R > 0 && <ReferenceLine y={result.LCL_R} stroke="#ef4444" strokeWidth={2} label={{ value: `LCI: ${result.LCL_R.toFixed(3)}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold', position: 'right' }} />}
+                  <Tooltip content={<CustomTooltip isXBar={false} />} />
+                  <ReferenceLine y={result.UCL_R} stroke="#ef4444" strokeWidth={2} />
+                  <ReferenceLine y={result.Rbar} stroke="#f59e0b" strokeWidth={2} />
+                  {result.LCL_R > 0 && <ReferenceLine y={result.LCL_R} stroke="#ef4444" strokeWidth={2} />}
                   <Line type="monotone" dataKey="rango" stroke="#f59e0b" strokeWidth={2} dot={<CustomDot oocKey="ooc_r" normalColor="#f59e0b" />} name={result.isXS ? 'S' : 'R'} />
                 </LineChart>
               </ResponsiveContainer>

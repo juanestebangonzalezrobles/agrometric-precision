@@ -123,11 +123,12 @@ function getSafeRecords() {
       .filter(Boolean)
       .filter(r => !r.isDemo && !r.id.startsWith('demo_')); // Filtrar siempre demos de presets antiguos
 
-    // Si no contiene registros sembrados, sembramos de inmediato
-    const hasSeeded = clean.some(r => r && r.id && r.id.startsWith('seeded_'));
-    if (!hasSeeded) {
-      const seededRecords = [
-        {
+    // Sembramos los registros predeterminados individuales si faltan
+    const seededKeys = ['seeded_aguacate', 'seeded_aloe', 'seeded_manzanilla', 'seeded_tomate'];
+    const missingKeys = seededKeys.filter(key => !clean.some(r => r && r.id === key));
+    if (missingKeys.length > 0) {
+      const seededRecordsMap = {
+        seeded_aguacate: {
           id: 'seeded_aguacate',
           producto: 'Aguacate Hass',
           tipo: 'Fruta',
@@ -145,7 +146,7 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de variables (peso de frutos).'
         },
-        {
+        seeded_aloe: {
           id: 'seeded_aloe',
           producto: 'Aloe Vera',
           tipo: 'Planta Medicinal',
@@ -163,7 +164,7 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de variables (altura de plantas).'
         },
-        {
+        seeded_manzanilla: {
           id: 'seeded_manzanilla',
           producto: 'Manzanilla Alemana',
           tipo: 'Planta Medicinal',
@@ -181,7 +182,7 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de atributos (flores defectuosas).'
         },
-        {
+        seeded_tomate: {
           id: 'seeded_tomate',
           producto: 'Tomate Chonto',
           tipo: 'Hortaliza',
@@ -199,9 +200,10 @@ function getSafeRecords() {
           estado: 'Analizado',
           notes: 'Muestra histórica de control de atributos (defectos por lote).'
         }
-      ].map(safeSanitize).filter(Boolean);
+      };
 
-      clean = [...clean.filter(r => !r.id.startsWith('seeded_')), ...seededRecords];
+      const newSeeded = missingKeys.map(k => seededRecordsMap[k]).map(safeSanitize).filter(Boolean);
+      clean = [...clean, ...newSeeded];
       localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
     }
     return clean;
@@ -261,6 +263,77 @@ const CustomDot = (props) => {
     );
   }
   return <circle key={`dot-c-normal-${payload.sg}`} cx={cx} cy={cy} r={4.5} fill={normalColor} stroke="var(--bg-card)" strokeWidth={1.5} />;
+};
+
+// Tooltip interactivo premium para gráficos de atributos
+const CustomTooltip = ({ active, payload, label, tipo }) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    let value = 0;
+    let valueLabel = '';
+    
+    if (tipo === 'p') {
+      value = data.p;
+      valueLabel = 'Proporción (p)';
+    } else if (tipo === 'np') {
+      value = data.np;
+      valueLabel = 'Defectuosos (np)';
+    } else if (tipo === 'u') {
+      value = data.u;
+      valueLabel = 'Defectos/Unidad (u)';
+    } else {
+      value = data.c;
+      valueLabel = 'Defectos (c)';
+    }
+    
+    const ucl = data.ucl;
+    const lcl = data.lcl;
+    const lc = data.pbar ?? data.npbar ?? data.ubar ?? data.cbar ?? 0;
+
+    const formatVal = (v) => {
+      if (typeof v !== 'number') return '-';
+      if (tipo === 'p') return `${(v * 100).toFixed(2)}%`;
+      return v.toFixed(4);
+    };
+
+    return (
+      <div className="custom-tooltip" style={{
+        background: 'rgba(15, 23, 42, 0.95)',
+        backdropFilter: 'blur(8px)',
+        border: '1px solid var(--border)',
+        borderRadius: '8px',
+        padding: '10px 14px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+        fontSize: '12px',
+        fontFamily: 'Outfit, sans-serif'
+      }}>
+        <div style={{ fontWeight: 700, color: '#ffffff', marginBottom: 6, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 4 }}>
+          Subgrupo {label}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+            <span style={{ color: 'var(--green-light)', fontWeight: 600 }}>{valueLabel}:</span>
+            <span style={{ fontFamily: 'JetBrains Mono', color: '#ffffff', fontWeight: 700 }}>{formatVal(value)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginTop: 4 }}>
+            <span style={{ color: '#ef4444' }}>LCS (Sup):</span>
+            <span style={{ fontFamily: 'JetBrains Mono', color: '#ef4444' }}>{formatVal(ucl)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+            <span style={{ color: 'var(--green-primary)' }}>LC (Centro):</span>
+            <span style={{ fontFamily: 'JetBrains Mono', color: 'var(--green-primary)' }}>{formatVal(lc)}</span>
+          </div>
+          {lcl !== undefined && lcl !== null && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+              <span style={{ color: lcl > 0 ? '#ef4444' : 'var(--text-muted)' }}>LCI (Inf):</span>
+              <span style={{ fontFamily: 'JetBrains Mono', color: lcl > 0 ? '#ef4444' : 'var(--text-muted)' }}>{formatVal(lcl)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  return null;
 };
 
 export default function AtributosPage() {
@@ -791,10 +864,10 @@ export default function AtributosPage() {
                     domain={domainAttr} 
                     allowDataOverflow={true} 
                   />
-                  <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
-                  <ReferenceLine y={uclVal} stroke="#ef4444" strokeWidth={2} strokeDasharray="4 4" label={{ value: `LCS: ${uclVal?.toFixed(4)}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold', position: 'right' }} />
-                  <ReferenceLine y={lcVal} stroke="var(--green-primary)" strokeWidth={2} label={{ value: `LC: ${lcVal?.toFixed(4)}`, fill: 'var(--green-primary)', fontSize: 10, fontWeight: 'bold', position: 'right' }} />
-                  {lclVal > 0 && <ReferenceLine y={lclVal} stroke="#ef4444" strokeWidth={2} strokeDasharray="4 4" label={{ value: `LCI: ${lclVal?.toFixed(4)}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold', position: 'right' }} />}
+                  <Tooltip content={<CustomTooltip tipo={result.tipo} />} />
+                  <ReferenceLine y={uclVal} stroke="#ef4444" strokeWidth={2} strokeDasharray="4 4" />
+                  <ReferenceLine y={lcVal} stroke="var(--green-primary)" strokeWidth={2} />
+                  {lclVal > 0 && <ReferenceLine y={lclVal} stroke="#ef4444" strokeWidth={2} strokeDasharray="4 4" />}
                   
                   <Line 
                     type="monotone" 
