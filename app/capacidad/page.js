@@ -30,10 +30,15 @@ function safeSanitize(r) {
   if (Array.isArray(r.subgruposData)) {
     subgruposData = r.subgruposData.map(row => {
       if (isAtributo) {
-        if (tipoGrafico === 'p') {
+        if (tipoGrafico === 'p' || tipoGrafico === 'np') {
           return {
             n: row && typeof row === 'object' ? (parseInt(row.n) || 100) : 100,
             np: row && typeof row === 'object' ? (parseInt(row.np) || 0) : 0
+          };
+        } else if (tipoGrafico === 'u') {
+          return {
+            n: row && typeof row === 'object' ? (parseInt(row.n) || 100) : 100,
+            c: row && typeof row === 'object' ? (parseInt(row.c) || 0) : 0
           };
         } else {
           return {

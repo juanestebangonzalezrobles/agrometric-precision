@@ -46,10 +46,15 @@ function safeSanitize(r) {
   if (Array.isArray(r.subgruposData)) {
     subgruposData = r.subgruposData.map(row => {
       if (isAtributo) {
-        if (tipoGrafico === 'p') {
+        if (tipoGrafico === 'p' || tipoGrafico === 'np') {
           return {
             n: row && typeof row === 'object' ? (parseInt(row.n) || 100) : 100,
             np: row && typeof row === 'object' ? (parseInt(row.np) || 0) : 0
+          };
+        } else if (tipoGrafico === 'u') {
+          return {
+            n: row && typeof row === 'object' ? (parseInt(row.n) || 100) : 100,
+            c: row && typeof row === 'object' ? (parseInt(row.c) || 0) : 0
           };
         } else {
           return {
@@ -172,8 +177,8 @@ export default function MuestrasPage() {
     let newMatrix = [];
 
     if (isAtrib) {
-      if (form.tipoGrafico === 'p') {
-        newMatrix = Array.from({ length: numRows }, () => [100, 0]); // [Tamaño n, Defectuosos np]
+      if (form.tipoGrafico === 'p' || form.tipoGrafico === 'np' || form.tipoGrafico === 'u') {
+        newMatrix = Array.from({ length: numRows }, () => [100, 0]); // [Tamaño n, Defectuosos np o Defectos c]
       } else {
         newMatrix = Array.from({ length: numRows }, () => [0]); // [Defectos c]
       }
@@ -201,10 +206,15 @@ export default function MuestrasPage() {
 
       if (isAtrib) {
         finalSubgruposData = matrixData.map(row => {
-          if (form.tipoGrafico === 'p') {
+          if (form.tipoGrafico === 'p' || form.tipoGrafico === 'np') {
             return {
               n: Math.max(1, parseInt(row[0]) || 100),
               np: Math.max(0, parseInt(row[1]) || 0)
+            };
+          } else if (form.tipoGrafico === 'u') {
+            return {
+              n: Math.max(1, parseInt(row[0]) || 100),
+              c: Math.max(0, parseInt(row[1]) || 0)
             };
           } else {
             return {
@@ -289,7 +299,12 @@ export default function MuestrasPage() {
     const next = editMatrix.map((row, ri) => {
       if (ri !== rIndex) return row;
       if (editingRecord?.isAtributo) {
-        const key = cIndex === 0 ? (editingRecord.tipoGrafico === 'p' ? 'n' : 'c') : 'np';
+        let key = 'c';
+        if (editingRecord.tipoGrafico === 'p' || editingRecord.tipoGrafico === 'np') {
+          key = cIndex === 0 ? 'n' : 'np';
+        } else if (editingRecord.tipoGrafico === 'u') {
+          key = cIndex === 0 ? 'n' : 'c';
+        }
         return {
           ...row,
           [key]: value === '' ? '' : (parseInt(value) || 0)
@@ -312,7 +327,13 @@ export default function MuestrasPage() {
   const handleAddSubgrupo = () => {
     let newRow;
     if (editingRecord?.isAtributo) {
-      newRow = editingRecord.tipoGrafico === 'p' ? { n: 100, np: 0 } : { c: 0 };
+      if (editingRecord.tipoGrafico === 'p' || editingRecord.tipoGrafico === 'np') {
+        newRow = { n: 100, np: 0 };
+      } else if (editingRecord.tipoGrafico === 'u') {
+        newRow = { n: 100, c: 0 };
+      } else {
+        newRow = { c: 0 };
+      }
     } else {
       const tam = parseInt(editingRecord?.tam) || 5;
       newRow = Array(tam).fill(0);
@@ -328,10 +349,15 @@ export default function MuestrasPage() {
 
       if (isAtrib) {
         finalSubgruposData = editMatrix.map(row => {
-          if (editingRecord.tipoGrafico === 'p') {
+          if (editingRecord.tipoGrafico === 'p' || editingRecord.tipoGrafico === 'np') {
             return {
               n: Math.max(1, parseInt(row.n) || 100),
               np: Math.max(0, parseInt(row.np) || 0)
+            };
+          } else if (editingRecord.tipoGrafico === 'u') {
+            return {
+              n: Math.max(1, parseInt(row.n) || 100),
+              c: Math.max(0, parseInt(row.c) || 0)
             };
           } else {
             return {
@@ -693,22 +719,23 @@ export default function MuestrasPage() {
                     <label className="form-label" style={{ fontWeight: 600 }}>Tipo de Control Estadístico *</label>
                     <select 
                       className="form-select" 
-                      value={form.isAtributo ? (form.tipoGrafico === 'c' ? 'atributo_c' : 'atributo_p') : 'variable'}
+                      value={form.isAtributo ? `atributo_${form.tipoGrafico}` : 'variable'}
                       onChange={e => {
                         const val = e.target.value;
                         if (val === 'variable') {
                           setForm(f => ({ ...f, isAtributo: false, tipoGrafico: 'p' }));
-                        } else if (val === 'atributo_p') {
-                          setForm(f => ({ ...f, isAtributo: true, tipoGrafico: 'p' }));
-                        } else if (val === 'atributo_c') {
-                          setForm(f => ({ ...f, isAtributo: true, tipoGrafico: 'c' }));
+                        } else if (val.startsWith('atributo_')) {
+                          const graphType = val.replace('atributo_', '');
+                          setForm(f => ({ ...f, isAtributo: true, tipoGrafico: graphType }));
                         }
                       }}
                       style={{ padding: '10px' }}
                     >
                       <option value="variable">Control por Variables Continuas (Gráficos X̄-R y X̄-S)</option>
                       <option value="atributo_p">Control por Atributos (Gráfico P - Proporción Defectuosa)</option>
+                      <option value="atributo_np">Control por Atributos (Gráfico NP - Número de Defectuosos)</option>
                       <option value="atributo_c">Control por Atributos (Gráfico C - Recuento de Defectos)</option>
+                      <option value="atributo_u">Control por Atributos (Gráfico U - Defectos por Unidad)</option>
                     </select>
                   </div>
 
@@ -919,11 +946,17 @@ export default function MuestrasPage() {
                             <th style={{ padding: '10px 12px', textAlign: 'center', background: 'rgba(16, 185, 129, 0.02)', color: 'var(--green-light)' }}>Media (X̄)</th>
                             <th style={{ padding: '10px 12px', textAlign: 'center', background: 'rgba(245, 158, 11, 0.02)', color: '#f59e0b' }}>Rango (R)</th>
                           </>
-                        ) : form.tipoGrafico === 'p' ? (
+                        ) : (form.tipoGrafico === 'p' || form.tipoGrafico === 'np') ? (
                           <>
                             <th style={{ padding: '10px 12px', textAlign: 'center' }}>Tamaño Muestra (n)</th>
                             <th style={{ padding: '10px 12px', textAlign: 'center' }}>Defectuosos (np)</th>
                             <th style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--green-light)' }}>Proporción (p)</th>
+                          </>
+                        ) : form.tipoGrafico === 'u' ? (
+                          <>
+                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>Tamaño Muestra (n)</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>Recuento Defectos (c)</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--green-light)' }}>Defectos/Unidad (u)</th>
                           </>
                         ) : (
                           <th style={{ padding: '10px 12px', textAlign: 'center' }}>Recuento Defectos (c)</th>
@@ -944,11 +977,17 @@ export default function MuestrasPage() {
                             media = (sum / row.length).toFixed(3);
                             rango = (Math.max(...parsedRow) - Math.min(...parsedRow)).toFixed(3);
                           }
-                        } else if (form.tipoGrafico === 'p') {
+                        } else if (form.tipoGrafico === 'p' || form.tipoGrafico === 'np') {
                           const nVal = parseFloat(row[0]);
                           const npVal = parseFloat(row[1]);
                           if (!isNaN(nVal) && !isNaN(npVal) && nVal > 0) {
                             p = (npVal / nVal).toFixed(4);
+                          }
+                        } else if (form.tipoGrafico === 'u') {
+                          const nVal = parseFloat(row[0]);
+                          const cVal = parseFloat(row[1]);
+                          if (!isNaN(nVal) && !isNaN(cVal) && nVal > 0) {
+                            p = (cVal / nVal).toFixed(4);
                           }
                         }
 
@@ -989,7 +1028,7 @@ export default function MuestrasPage() {
                                   {rango}
                                 </td>
                               </>
-                            ) : form.tipoGrafico === 'p' ? (
+                            ) : (form.tipoGrafico === 'p' || form.tipoGrafico === 'np' || form.tipoGrafico === 'u') ? (
                               <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600, color: 'var(--green-light)', fontFamily: 'JetBrains Mono' }}>
                                 {p}
                               </td>
@@ -1214,9 +1253,9 @@ export default function MuestrasPage() {
                       <thead>
                         <tr style={{ background: 'rgba(255, 255, 255, 0.02)' }}>
                           <th style={{ padding: '10px', textAlign: 'center', width: '70px' }}>Subgrupo</th>
-                          {editingRecord.tipoGrafico === 'p' && <th style={{ padding: '10px', textAlign: 'center' }}>Muestra (n)</th>}
+                          {(editingRecord.tipoGrafico === 'p' || editingRecord.tipoGrafico === 'np' || editingRecord.tipoGrafico === 'u') && <th style={{ padding: '10px', textAlign: 'center' }}>Muestra (n)</th>}
                           <th style={{ padding: '10px', textAlign: 'center' }}>
-                            {editingRecord.tipoGrafico === 'p' ? 'Defectuosos (np)' : 'Defectos (c)'}
+                            {(editingRecord.tipoGrafico === 'p' || editingRecord.tipoGrafico === 'np') ? 'Defectuosos (np)' : 'Defectos (c)'}
                           </th>
                           <th style={{ padding: '10px', textAlign: 'center', width: '70px' }}>Acción</th>
                         </tr>
@@ -1226,7 +1265,7 @@ export default function MuestrasPage() {
                           <tr key={ri} style={{ borderBottom: '1px solid var(--border)' }}>
                             <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 600, color: 'var(--text-muted)' }}>{ri + 1}</td>
                             
-                            {editingRecord.tipoGrafico === 'p' && (
+                            {(editingRecord.tipoGrafico === 'p' || editingRecord.tipoGrafico === 'np' || editingRecord.tipoGrafico === 'u') && (
                               <td style={{ padding: '4px 8px' }}>
                                 <input 
                                   type="number" 
@@ -1245,8 +1284,18 @@ export default function MuestrasPage() {
                               <input 
                                 type="number" 
                                 className="table-input"
-                                value={editingRecord.tipoGrafico === 'p' ? (item.np !== undefined ? item.np : '') : (item.c !== undefined ? item.c : '')}
-                                onChange={e => handleUpdateEditCell(ri, editingRecord.tipoGrafico === 'p' ? 1 : 0, e.target.value)}
+                                value={
+                                  (editingRecord.tipoGrafico === 'p' || editingRecord.tipoGrafico === 'np') 
+                                    ? (item.np !== undefined ? item.np : '') 
+                                    : (item.c !== undefined ? item.c : '')
+                                }
+                                onChange={e => 
+                                  handleUpdateEditCell(
+                                    ri, 
+                                    (editingRecord.tipoGrafico === 'p' || editingRecord.tipoGrafico === 'np' || editingRecord.tipoGrafico === 'u') ? 1 : 0, 
+                                    e.target.value
+                                  )
+                                }
                                 style={{
                                   width: '100%', padding: '5px 8px', textAlign: 'right', background: 'var(--bg-secondary)',
                                   color: '#fff', border: '1px solid var(--border)', borderRadius: '4px', fontFamily: 'JetBrains Mono'

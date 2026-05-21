@@ -52,10 +52,15 @@ function safeSanitize(r) {
   if (Array.isArray(r.subgruposData)) {
     subgruposData = r.subgruposData.map(row => {
       if (isAtributo) {
-        if (tipoGrafico === 'p') {
+        if (tipoGrafico === 'p' || tipoGrafico === 'np') {
           return {
             n: row && typeof row === 'object' ? (parseInt(row.n) || 100) : 100,
             np: row && typeof row === 'object' ? (parseInt(row.np) || 0) : 0
+          };
+        } else if (tipoGrafico === 'u') {
+          return {
+            n: row && typeof row === 'object' ? (parseInt(row.n) || 100) : 100,
+            c: row && typeof row === 'object' ? (parseInt(row.c) || 0) : 0
           };
         } else {
           return {
@@ -248,6 +253,68 @@ export default function AtributosPage() {
       lcVal = pbar;
       uclVal = chartData[0]?.ucl || 0;
       lclVal = chartData[0]?.lcl || 0;
+    } else if (tipoGrafico === 'np') {
+      const totalN = subgrupos.reduce((sum, s) => sum + (parseInt(s.n) || 100), 0);
+      const totalNP = subgrupos.reduce((sum, s) => sum + (parseInt(s.np) || 0), 0);
+      const pbar = totalN > 0 ? totalNP / totalN : 0;
+      const k = subgrupos.length;
+      const averageN = k > 0 ? totalN / k : 100;
+      const npbar = pbar * averageN;
+      
+      chartData = subgrupos.map((s, i) => {
+        const n = Math.max(1, parseInt(s.n) || 100);
+        const np = Math.max(0, parseInt(s.np) || 0);
+        const stdDev = Math.sqrt(n * pbar * (1 - pbar));
+        const centerLine = n * pbar;
+        const ucl = centerLine + 3 * stdDev;
+        const lcl = Math.max(0, centerLine - 3 * stdDev);
+        const z = stdDev > 0 ? (np - centerLine) / stdDev : 0;
+        
+        return { 
+          sg: i + 1, 
+          n, 
+          np, 
+          ucl, 
+          lcl, 
+          npbar: centerLine, 
+          ooc: np > ucl || np < lcl,
+          z
+        };
+      });
+      
+      lcVal = npbar;
+      uclVal = chartData[0]?.ucl || 0;
+      lclVal = chartData[0]?.lcl || 0;
+    } else if (tipoGrafico === 'u') {
+      const totalN = subgrupos.reduce((sum, s) => sum + (parseInt(s.n) || 100), 0);
+      const totalC = subgrupos.reduce((sum, s) => sum + (parseInt(s.c) || 0), 0);
+      const ubar = totalN > 0 ? totalC / totalN : 0;
+      
+      chartData = subgrupos.map((s, i) => {
+        const n = Math.max(1, parseInt(s.n) || 100);
+        const c = Math.max(0, parseInt(s.c) || 0);
+        const u = c / n;
+        const stdDev = Math.sqrt(ubar / n);
+        const ucl = ubar + 3 * stdDev;
+        const lcl = Math.max(0, ubar - 3 * stdDev);
+        const z = stdDev > 0 ? (u - ubar) / stdDev : 0;
+        
+        return { 
+          sg: i + 1, 
+          n, 
+          c, 
+          u, 
+          ucl, 
+          lcl, 
+          ubar, 
+          ooc: u > ucl || u < lcl,
+          z
+        };
+      });
+      
+      lcVal = ubar;
+      uclVal = chartData[0]?.ucl || 0;
+      lclVal = chartData[0]?.lcl || 0;
     } else {
       const k = subgrupos.length;
       const totalC = subgrupos.reduce((sum, s) => sum + (parseInt(s.c) || 0), 0);
@@ -305,6 +372,18 @@ export default function AtributosPage() {
           return { n: customN, np: npVal };
         });
         setResult(computeChartResults(sgs, 'p'));
+      } else if (tipo === 'np') {
+        const sgs = Array.from({ length: customRows }, (_, i) => {
+          const npVal = parseInt(customValues[i]) || 0;
+          return { n: customN, np: npVal };
+        });
+        setResult(computeChartResults(sgs, 'np'));
+      } else if (tipo === 'u') {
+        const sgs = Array.from({ length: customRows }, (_, i) => {
+          const cVal = parseInt(customValues[i]) || 0;
+          return { n: customN, c: cVal };
+        });
+        setResult(computeChartResults(sgs, 'u'));
       } else {
         const sgs = Array.from({ length: customRows }, (_, i) => {
           const cVal = parseInt(customValues[i]) || 0;
@@ -390,7 +469,7 @@ export default function AtributosPage() {
             <h1 className="header-title" style={{ margin: 0, fontSize: '24px', fontWeight: 800 }}>Control de Atributos</h1>
           </div>
           <p className="header-subtitle" style={{ margin: 0, color: 'var(--text-muted)', fontSize: '13px' }}>
-            Monitoreo y análisis de defectos en lotes agrícolas mediante gráficos P y C con Nelson Rules activas.
+            Monitoreo y análisis de defectos en lotes agrícolas mediante gráficos P, NP, C y U con Nelson Rules activas.
           </p>
         </div>
         {result && (
@@ -442,12 +521,14 @@ export default function AtributosPage() {
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Tipo de Gráfica</label>
                 <select className="form-select" value={tipo} onChange={e => { setTipo(e.target.value); setCustomValues([]); }}>
-                  <option value="p">Gráfico P (Porcentaje defectuoso)</option>
-                  <option value="c">Gráfico C (Recuento de defectos)</option>
+                  <option value="p">Gráfico P (Proporción Defectuosa)</option>
+                  <option value="np">Gráfico NP (Número de Defectuosos)</option>
+                  <option value="c">Gráfico C (Cantidad Total de Defectos)</option>
+                  <option value="u">Gráfico U (Tasa de Defectos por Unidad)</option>
                 </select>
               </div>
               
-              {tipo === 'p' && (
+              {(tipo === 'p' || tipo === 'np' || tipo === 'u') && (
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Tamaño muestra (n)</label>
                   <input type="number" min={1} className="form-input" value={customN} onChange={e => setCustomN(Math.max(1, parseInt(e.target.value) || 100))} />
@@ -466,7 +547,10 @@ export default function AtributosPage() {
                   <tr style={{ background: 'rgba(255, 255, 255, 0.02)' }}>
                     <th style={{ padding: '8px 12px', textAlign: 'center', width: '90px' }}>Subgrupo</th>
                     <th style={{ padding: '8px 12px', textAlign: 'left' }}>
-                      {tipo === 'p' ? `Piezas Defectuosas np (de n = ${customN})` : 'Recuento de Defectos (c)'}
+                      {tipo === 'p' && `Unidades Defectuosas np (de n = ${customN})`}
+                      {tipo === 'np' && `Unidades Defectuosas np (de n = ${customN})`}
+                      {tipo === 'u' && `Cantidad de Defectos c (de n = ${customN})`}
+                      {tipo === 'c' && 'Recuento de Defectos (c)'}
                     </th>
                   </tr>
                 </thead>
@@ -526,31 +610,51 @@ export default function AtributosPage() {
         {/* Límites de Control */}
         {result && result.data.length > 0 && (
           <div className={`grid-3 ${!printConfig.info ? 'no-print' : ''}`} style={{ marginBottom: 16, gap: 12 }}>
-            {result.tipo === 'p' ? [
-              { label: 'p̄ (Tasa de Defecto Promedio)', val: `${(result.lcVal * 100).toFixed(2)}%` },
-              { label: 'Línea de Control Superior (LCS)', val: `${(result.uclVal * 100).toFixed(2)}%`, color: '#ef4444' },
-              { label: 'Línea de Control Inferior (LCI)', val: `${(result.lclVal * 100).toFixed(2)}%`, color: '#ef4444' },
-            ].map((s, i) => (
-              <div key={i} className="card" style={{ textAlign: 'center', padding: '14px', border: '1px solid var(--border)', borderRadius: '10px' }}>
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>{s.label}</div>
-                <div className="print-text-dark" style={{ fontSize: '20px', fontWeight: 800, fontFamily: 'JetBrains Mono', color: s.color || 'var(--green-light)' }}>{s.val}</div>
-              </div>
-            )) : [
-              { label: 'c̄ (Promedio de Defectos)', val: result.lcVal?.toFixed(3) },
-              { label: 'Línea de Control Superior (LCS)', val: result.uclVal?.toFixed(3), color: '#ef4444' },
-              { label: 'Línea de Control Inferior (LCI)', val: result.lclVal?.toFixed(3), color: '#ef4444' },
-            ].map((s, i) => (
-              <div key={i} className="card" style={{ textAlign: 'center', padding: '14px', border: '1px solid var(--border)', borderRadius: '10px' }}>
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>{s.label}</div>
-                <div className="print-text-dark" style={{ fontSize: '20px', fontWeight: 800, fontFamily: 'JetBrains Mono', color: s.color || 'var(--green-light)' }}>{s.val}</div>
-              </div>
-            ))}
+            {(() => {
+              let cards = [];
+              if (result.tipo === 'p') {
+                cards = [
+                  { label: 'p̄ (Tasa de Defecto Promedio)', val: `${(result.lcVal * 100).toFixed(2)}%` },
+                  { label: 'Línea de Control Superior (LCS)', val: `${(result.uclVal * 100).toFixed(2)}%`, color: '#ef4444' },
+                  { label: 'Línea de Control Inferior (LCI)', val: `${(result.lclVal * 100).toFixed(2)}%`, color: '#ef4444' }
+                ];
+              } else if (result.tipo === 'np') {
+                cards = [
+                  { label: 'n̄p̄ (Promedio Unidades Defectuosas)', val: result.lcVal?.toFixed(2) },
+                  { label: 'Línea de Control Superior (LCS)', val: result.uclVal?.toFixed(2), color: '#ef4444' },
+                  { label: 'Línea de Control Inferior (LCI)', val: result.lclVal?.toFixed(2), color: '#ef4444' }
+                ];
+              } else if (result.tipo === 'u') {
+                cards = [
+                  { label: 'ū (Promedio Defectos por Unidad)', val: result.lcVal?.toFixed(4) },
+                  { label: 'Línea de Control Superior (LCS)', val: result.uclVal?.toFixed(4), color: '#ef4444' },
+                  { label: 'Línea de Control Inferior (LCI)', val: result.lclVal?.toFixed(4), color: '#ef4444' }
+                ];
+              } else { // 'c'
+                cards = [
+                  { label: 'c̄ (Promedio de Defectos)', val: result.lcVal?.toFixed(2) },
+                  { label: 'Línea de Control Superior (LCS)', val: result.uclVal?.toFixed(2), color: '#ef4444' },
+                  { label: 'Línea de Control Inferior (LCI)', val: result.lclVal?.toFixed(2), color: '#ef4444' }
+                ];
+              }
+              return cards.map((s, i) => (
+                <div key={i} className="card" style={{ textAlign: 'center', padding: '14px', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>{s.label}</div>
+                  <div className="print-text-dark" style={{ fontSize: '20px', fontWeight: 800, fontFamily: 'JetBrains Mono', color: s.color || 'var(--green-light)' }}>{s.val}</div>
+                </div>
+              ));
+            })()}
           </div>
         )}
 
         {/* Gráfico Recharts */}
         {result && (() => {
-          const chartVals = result.data.map(d => result.tipo === 'p' ? d.p : d.c);
+          const chartVals = result.data.map(d => {
+            if (result.tipo === 'p') return d.p;
+            if (result.tipo === 'np') return d.np;
+            if (result.tipo === 'u') return d.u;
+            return d.c;
+          });
           const uclVal = result.uclVal || 0;
           const lclVal = result.lclVal || 0;
           const lcVal = result.lcVal || 0;
@@ -562,7 +666,10 @@ export default function AtributosPage() {
           return (
             <div className={`card chart-wrapper ${!printConfig.chart ? 'no-print' : ''}`} style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', marginBottom: 16 }}>
               <div className="chart-title print-text-dark" style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', marginBottom: 4 }}>
-                {result.tipo === 'p' ? '📉 Gráfico P — Fracción de Unidades Defectuosas' : '📊 Gráfico C — Cantidad de Defectos por Muestra'}
+                {result.tipo === 'p' && '📉 Gráfico P — Fracción de Unidades Defectuosas'}
+                {result.tipo === 'np' && '📉 Gráfico NP — Número de Unidades Defectuosas'}
+                {result.tipo === 'c' && '📊 Gráfico C — Cantidad Total de Defectos'}
+                {result.tipo === 'u' && '📊 Gráfico U — Tasa de Defectos por Unidad'}
               </div>
               <div className="chart-desc print-text-muted" style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: 16 }}>
                 Bandas estadísticas de control sigma ±3σ y Nelson Rules. LCS: {uclVal?.toFixed(4)} | LC: {lcVal?.toFixed(4)} | LCI: {lclVal?.toFixed(4)}
@@ -589,11 +696,19 @@ export default function AtributosPage() {
                   
                   <Line 
                     type="monotone" 
-                    dataKey={result.tipo === 'p' ? 'p' : 'c'} 
+                    dataKey={
+                      result.tipo === 'p' ? 'p' : 
+                      result.tipo === 'np' ? 'np' : 
+                      result.tipo === 'u' ? 'u' : 'c'
+                    } 
                     stroke="var(--green-light)" 
                     strokeWidth={2.5}
                     dot={<CustomDot oocKey="ooc" normalColor="var(--green-light)" />}
-                    name={result.tipo === 'p' ? 'Proporción (p)' : 'Defectos (c)'} 
+                    name={
+                      result.tipo === 'p' ? 'Proporción (p)' : 
+                      result.tipo === 'np' ? 'Unidades Defectuosas (np)' : 
+                      result.tipo === 'u' ? 'Defectos por Unidad (u)' : 'Defectos (c)'
+                    } 
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -608,7 +723,16 @@ export default function AtributosPage() {
           const isControlled = result.nelsonDiagnostic.isControlled && oocPts.length === 0;
           const totalPts = result.data.length;
           const rate = result.tipo === 'p' ? (result.lcVal * 100).toFixed(2) : result.lcVal?.toFixed(2);
-          const rateLabel = result.tipo === 'p' ? `${rate}% unidades defectuosas` : `${rate} defectos por lote`;
+          let rateLabel = '';
+          if (result.tipo === 'p') {
+            rateLabel = `${rate}% unidades defectuosas`;
+          } else if (result.tipo === 'np') {
+            rateLabel = `${rate} unidades defectuosas promedio`;
+          } else if (result.tipo === 'u') {
+            rateLabel = `${result.lcVal?.toFixed(4)} defectos por unidad promedio`;
+          } else {
+            rateLabel = `${rate} defectos por lote`;
+          }
 
           return (
             <div className={`card ${!printConfig.nelson ? 'no-print' : ''}`} style={{ 
@@ -686,9 +810,10 @@ export default function AtributosPage() {
                     {oocPts.map((d, i) => (
                       <div key={i} className="print-card-border" style={{ fontSize: '11.5px', color: 'var(--text-muted)', background: 'rgba(239,68,68,0.03)', padding: '6px 12px', borderRadius: 6, borderLeft: '3px solid #ef4444' }}>
                         <strong style={{ color: '#ef4444' }}>Subgrupo {d.sg}:</strong>{' '}
-                        {result.tipo === 'p'
-                          ? `Medido = ${(d.p * 100).toFixed(2)}% > LCS (${(d.ucl * 100).toFixed(2)}%)`
-                          : `Defectos = ${d.c} > LCS (${d.ucl.toFixed(2)})`}
+                        {result.tipo === 'p' && `Medido = ${(d.p * 100).toFixed(2)}% vs LCS (${(d.ucl * 100).toFixed(2)}%)`}
+                        {result.tipo === 'np' && `Defectuosos = ${d.np} vs LCS (${d.ucl.toFixed(2)})`}
+                        {result.tipo === 'u' && `Defectos/Unidad = ${d.u?.toFixed(4)} vs LCS (${d.ucl.toFixed(4)})`}
+                        {result.tipo === 'c' && `Defectos = ${d.c} vs LCS (${d.ucl.toFixed(2)})`}
                       </div>
                     ))}
                   </div>
@@ -727,13 +852,27 @@ export default function AtributosPage() {
                 <thead>
                   <tr style={{ background: 'rgba(255, 255, 255, 0.02)', borderBottom: '1px solid var(--border)' }}>
                     <th style={{ padding: '10px 12px', textAlign: 'center' }}>Subgrupo</th>
-                    {result.tipo === 'p' ? (
+                    {result.tipo === 'p' && (
                       <>
                         <th style={{ padding: '10px 12px', textAlign: 'center' }}>n</th>
                         <th style={{ padding: '10px 12px', textAlign: 'center' }}>np</th>
                         <th style={{ padding: '10px 12px', textAlign: 'center' }}>Proporción (p)</th>
                       </>
-                    ) : (
+                    )}
+                    {result.tipo === 'np' && (
+                      <>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>n</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>np</th>
+                      </>
+                    )}
+                    {result.tipo === 'u' && (
+                      <>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>n</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>c (Defectos)</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>Defectos/Unidad (u)</th>
+                      </>
+                    )}
+                    {result.tipo === 'c' && (
                       <th style={{ padding: '10px 12px', textAlign: 'center' }}>Defectos (c)</th>
                     )}
                     <th style={{ padding: '10px 12px', textAlign: 'center' }}>LCS</th>
@@ -756,19 +895,38 @@ export default function AtributosPage() {
                         }}
                       >
                         <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>{d.sg}</td>
-                        {result.tipo === 'p' ? (
+                        {result.tipo === 'p' && (
                           <>
                             <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono' }}>{d.n}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono' }}>{d.np}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono', fontWeight: 600 }}>{d.p?.toFixed(4)}</td>
                           </>
-                        ) : (
+                        )}
+                        {result.tipo === 'np' && (
+                          <>
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono' }}>{d.n}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono', fontWeight: 600 }}>{d.np}</td>
+                          </>
+                        )}
+                        {result.tipo === 'u' && (
+                          <>
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono' }}>{d.n}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono' }}>{d.c}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono', fontWeight: 600 }}>{d.u?.toFixed(4)}</td>
+                          </>
+                        )}
+                        {result.tipo === 'c' && (
                           <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono', fontWeight: 600 }}>{d.c}</td>
                         )}
                         
                         <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono', color: '#ef4444' }}>{d.ucl?.toFixed(4)}</td>
                         <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono', color: 'var(--green-primary)' }}>
-                          {(result.tipo === 'p' ? d.pbar : d.cbar)?.toFixed(4)}
+                          {(() => {
+                            if (result.tipo === 'p') return d.pbar?.toFixed(4);
+                            if (result.tipo === 'np') return d.npbar?.toFixed(4);
+                            if (result.tipo === 'u') return d.ubar?.toFixed(4);
+                            return d.cbar?.toFixed(4);
+                          })()}
                         </td>
                         <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono', color: '#ef4444' }}>{d.lcl?.toFixed(4)}</td>
                         
