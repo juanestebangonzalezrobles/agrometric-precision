@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { calcCapability } from '../../lib/data';
+import { calcCapability, aguacatePeso, aloeAltura, manzanillaP, tomateDefectos } from '../../lib/data';
 import { Printer, X, RefreshCw } from 'lucide-react';
 
 const STORAGE_KEY = 'agrometric_registros';
@@ -81,20 +81,110 @@ function safeSanitize(r) {
   };
 }
 
-// Carga segura de registros
+// Carga segura de registros con auto-siembra eagerly de inmediato
 function getSafeRecords() {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
+    let parsed = [];
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        parsed = [];
+      }
+    }
+    if (!Array.isArray(parsed)) parsed = [];
+    
+    let clean = parsed
       .map(safeSanitize)
       .filter(Boolean)
       .filter(r => !r.isDemo && !r.id.startsWith('demo_')); // Filtrar siempre demos de presets antiguos
+
+    // Si no contiene registros sembrados, sembramos de inmediato
+    const hasSeeded = clean.some(r => r && r.id && r.id.startsWith('seeded_'));
+    if (!hasSeeded) {
+      const seededRecords = [
+        {
+          id: 'seeded_aguacate',
+          producto: 'Aguacate Hass',
+          tipo: 'Fruta',
+          variableName: 'Peso',
+          unidad: 'g',
+          analista: 'Carlos Mendoza',
+          fecha: '2026-05-01',
+          lse: '280',
+          lie: '180',
+          lseNum: 280,
+          lieNum: 180,
+          subgruposData: aguacatePeso.subgrupos,
+          isAtributo: false,
+          tipoGrafico: 'XR',
+          estado: 'Analizado',
+          notes: 'Muestra histórica de control de variables (peso de frutos).'
+        },
+        {
+          id: 'seeded_aloe',
+          producto: 'Aloe Vera',
+          tipo: 'Planta Medicinal',
+          variableName: 'Altura de Planta',
+          unidad: 'cm',
+          analista: 'Laura Gómez',
+          fecha: '2026-05-05',
+          lse: '55',
+          lie: '25',
+          lseNum: 55,
+          lieNum: 25,
+          subgruposData: aloeAltura.subgrupos,
+          isAtributo: false,
+          tipoGrafico: 'XR',
+          estado: 'Analizado',
+          notes: 'Muestra histórica de control de variables (altura de plantas).'
+        },
+        {
+          id: 'seeded_manzanilla',
+          producto: 'Manzanilla Alemana',
+          tipo: 'Planta Medicinal',
+          variableName: 'Flores con defectos',
+          unidad: '',
+          analista: 'Ana Torres',
+          fecha: '2026-05-10',
+          lse: '-',
+          lie: '-',
+          lseNum: null,
+          lieNum: null,
+          subgruposData: manzanillaP.subgrupos,
+          isAtributo: true,
+          tipoGrafico: 'p',
+          estado: 'Analizado',
+          notes: 'Muestra histórica de control de atributos (flores defectuosas).'
+        },
+        {
+          id: 'seeded_tomate',
+          producto: 'Tomate Chonto',
+          tipo: 'Hortaliza',
+          variableName: 'Manchas / Lesiones',
+          unidad: '',
+          analista: 'Pedro Rivas',
+          fecha: '2026-05-12',
+          lse: '-',
+          lie: '-',
+          lseNum: null,
+          lieNum: null,
+          subgruposData: tomateDefectos.subgrupos,
+          isAtributo: true,
+          tipoGrafico: 'c',
+          estado: 'Analizado',
+          notes: 'Muestra histórica de control de atributos (defectos por lote).'
+        }
+      ].map(safeSanitize).filter(Boolean);
+
+      clean = [...clean.filter(r => !r.id.startsWith('seeded_')), ...seededRecords];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+    }
+    return clean;
   } catch (e) {
-    console.error('Error al parsear localStorage:', e);
+    console.error('Error al parsear/sembrar localStorage:', e);
     return [];
   }
 }
