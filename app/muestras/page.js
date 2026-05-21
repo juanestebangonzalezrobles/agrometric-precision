@@ -4,117 +4,18 @@ import { CheckCircle, Trash2, Edit3, Plus, X, ArrowLeft, Save } from 'lucide-rea
 
 const STORAGE_KEY = 'agrometric_registros';
 
-// Datos predeterminados para sembrar el localStorage en la primera carga
-const DEFAULT_RECORDS = [
-  {
-    id: 'demo_1',
-    producto: 'Aguacate Hass',
-    tipo: 'Fruta',
-    variable: 'Peso (g)',
-    unidad: 'g',
-    variableName: 'Peso',
-    analista: 'Carlos Mendoza',
-    fecha: '2026-05-01',
-    subgrupos: 25,
-    tam: 5,
-    lse: 280,
-    lie: 180,
-    lseNum: 280,
-    lieNum: 180,
-    estado: 'Analizado',
-    subgruposData: [
-      [225, 230, 220, 235, 228], [210, 215, 220, 218, 212], [245, 240, 238, 242, 250],
-      [198, 205, 200, 195, 202], [260, 255, 258, 262, 257], [230, 228, 225, 232, 235],
-      [185, 190, 188, 192, 186], [242, 238, 245, 240, 243], [220, 215, 218, 222, 216],
-      [265, 270, 268, 272, 260], [205, 210, 208, 212, 206], [250, 245, 248, 252, 247],
-      [235, 240, 238, 232, 237], [195, 200, 198, 202, 197], [215, 220, 218, 212, 217],
-      [258, 262, 255, 260, 257], [228, 230, 225, 232, 227], [240, 245, 242, 238, 243],
-      [202, 198, 205, 200, 203], [270, 265, 268, 272, 267], [218, 222, 220, 215, 219],
-      [255, 250, 252, 258, 253], [185, 188, 190, 186, 187], [232, 235, 230, 238, 233],
-      [248, 245, 250, 252, 247],
-    ],
-    isAtributo: false,
-    isDemo: true
-  },
-  {
-    id: 'demo_2',
-    producto: 'Aloe Vera',
-    tipo: 'Planta Medicinal',
-    variable: 'Altura (cm)',
-    unidad: 'cm',
-    variableName: 'Altura',
-    analista: 'Laura Gómez',
-    fecha: '2026-05-05',
-    subgrupos: 25,
-    tam: 4,
-    lse: 55,
-    lie: 25,
-    lseNum: 55,
-    lieNum: 25,
-    estado: 'Analizado',
-    subgruposData: [
-      [38, 42, 40, 39], [45, 48, 44, 46], [32, 35, 33, 34], [50, 52, 49, 51],
-      [28, 30, 29, 31], [43, 41, 44, 42], [36, 38, 37, 35], [47, 50, 48, 46],
-      [33, 31, 34, 32], [52, 54, 51, 53], [40, 42, 39, 41], [27, 29, 28, 30],
-      [44, 46, 43, 45], [37, 39, 36, 38], [49, 51, 48, 50], [35, 33, 36, 34],
-      [41, 43, 40, 42], [26, 28, 27, 29], [46, 48, 45, 47], [38, 40, 37, 39],
-      [53, 55, 52, 54], [31, 33, 30, 32], [44, 42, 45, 43], [39, 41, 38, 40],
-      [48, 50, 47, 49],
-    ],
-    isAtributo: false,
-    isDemo: true
-  },
-  {
-    id: 'demo_3',
-    producto: 'Manzanilla Alemana',
-    tipo: 'Planta Medicinal',
-    variable: 'Flores defectuosas',
-    unidad: '',
-    variableName: 'Flores defectuosas',
-    analista: 'Ana Torres',
-    fecha: '2026-05-10',
-    subgrupos: 25,
-    tam: 100,
-    lse: '-',
-    lie: '-',
-    estado: 'Analizado',
-    isAtributo: true,
-    isDemo: true,
-    tipoGrafico: 'p',
-    subgruposData: [8,5,12,3,9,6,14,4,7,11,5,8,10,3,6,9,13,4,7,8,5,11,6,9,7].map(np => ({ n: 100, np }))
-  },
-  {
-    id: 'demo_4',
-    producto: 'Tomate Chonto',
-    tipo: 'Hortaliza',
-    variable: 'Manchas / Lesiones',
-    unidad: '',
-    variableName: 'Manchas / Lesiones',
-    analista: 'Pedro Rivas',
-    fecha: '2026-05-12',
-    subgrupos: 25,
-    tam: 1,
-    lse: '-',
-    lie: '-',
-    estado: 'Analizado',
-    isAtributo: true,
-    isDemo: true,
-    tipoGrafico: 'c',
-    subgruposData: [3,7,2,5,8,4,6,1,9,3,5,7,2,4,6,8,3,5,1,7,4,6,2,5,8].map(c => ({ n: 1, c }))
-  }
-];
-
+// Funciones de utilidad para cargar y guardar en localStorage de forma segura
 function loadRecords() {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_RECORDS));
-      return DEFAULT_RECORDS;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      return [];
     }
     return JSON.parse(raw);
   } catch {
-    return DEFAULT_RECORDS;
+    return [];
   }
 }
 
@@ -122,6 +23,7 @@ function saveRecords(records) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
 }
+
 
 export default function MuestrasPage() {
   const [activeTab, setActiveTab] = useState('ver');
@@ -140,7 +42,12 @@ export default function MuestrasPage() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setRecords(loadRecords());
+    let loaded = loadRecords();
+    if (loaded.some(r => r.isDemo || r.id?.startsWith('demo_'))) {
+      loaded = loaded.filter(r => !r.isDemo && !r.id?.startsWith('demo_'));
+      saveRecords(loaded);
+    }
+    setRecords(loaded);
   }, []);
 
   const initMatrix = () => {
@@ -291,56 +198,71 @@ export default function MuestrasPage() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-secondary btn-sm" style={{ fontSize: 11 }}
-                  onClick={() => { if (confirm('¿Restablecer todos los datos a la versión de fábrica? Perderás tus cambios.')) { localStorage.removeItem(STORAGE_KEY); setRecords(loadRecords()); } }}>
-                  Restablecer Fábrica
-                </button>
+                {records.length > 0 && (
+                  <button className="btn btn-secondary btn-sm" style={{ fontSize: 11, borderColor: '#ef4444', color: '#ef4444' }}
+                    onClick={() => { if (confirm('¿Estás seguro de que deseas eliminar TODOS los registros guardados? Esta acción no se puede deshacer.')) { localStorage.removeItem(STORAGE_KEY); setRecords([]); } }}>
+                    Vaciar Base de Datos
+                  </button>
+                )}
                 <button className="btn btn-primary btn-sm" onClick={() => setActiveTab('nuevo')}>+ Nuevo Registro</button>
               </div>
             </div>
             <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Origen</th><th>Producto</th><th>Tipo</th><th>Variable / Atributo</th><th>Analista</th><th>Fecha</th><th>Subgrupos</th><th>n</th><th>LSE</th><th>LIE</th><th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {records.map((m, idx) => (
-                    <tr key={idx} style={!m.isDemo ? { background: 'rgba(16,185,129,0.04)', borderLeft: '3px solid var(--green-primary)' } : {}}>
-                      <td>
-                        <span className={`badge ${m.isDemo ? 'badge-blue' : 'badge-green'}`} style={{ fontSize: 10 }}>
-                          {m.isDemo ? 'PREDETERMINADO' : 'USUARIO'}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{m.producto}</td>
-                      <td><span className="badge badge-secondary" style={{ fontSize: 10 }}>{m.tipo}</span></td>
-                      <td>
-                        {m.variable} 
-                        {m.isAtributo && <span style={{ fontSize: 9, background: 'var(--border)', color: 'var(--text-muted)', marginLeft: 6, padding: '2px 4px', borderRadius: 4 }}>ATRIBUTO ({m.tipoGrafico.toUpperCase()})</span>}
-                      </td>
-                      <td>{m.analista}</td>
-                      <td className="td-num" style={{ fontSize: 12 }}>{m.fecha}</td>
-                      <td className="td-num" style={{ fontWeight: 700 }}>{m.subgrupos}</td>
-                      <td className="td-num">{m.tam}</td>
-                      <td className="td-num">{m.lse}</td>
-                      <td className="td-num">{m.lie}</td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          <button className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}
-                            onClick={() => handleOpenEdit(m)}>
-                            <Edit3 size={12} /> Editar
-                          </button>
-                          <button className="btn btn-red btn-sm" style={{ padding: '4px 6px', display: 'flex', alignItems: 'center' }}
-                            onClick={(e) => handleDeleteRecord(m.id, e)} title="Eliminar este conjunto de datos">
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      </td>
+              {records.length === 0 ? (
+                <div style={{ padding: '48px 24px', textAlign: 'center', background: 'rgba(255, 255, 255, 0.01)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>No hay datos registrados</div>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 auto 16px auto', maxWidth: 400, lineHeight: 1.5 }}>
+                    El sistema está listo para operar con tus propios muestreos. Agrega un nuevo registro manualmente para comenzar a realizar análisis de estabilidad, normalidad y capacidad.
+                  </p>
+                  <button className="btn btn-primary btn-sm" onClick={() => setActiveTab('nuevo')}>
+                    + Registrar Primera Muestra
+                  </button>
+                </div>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Origen</th><th>Producto</th><th>Tipo</th><th>Variable / Atributo</th><th>Analista</th><th>Fecha</th><th>Subgrupos</th><th>n</th><th>LSE</th><th>LIE</th><th>Acciones</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {records.map((m, idx) => (
+                      <tr key={idx} style={!m.isDemo ? { background: 'rgba(16,185,129,0.04)', borderLeft: '3px solid var(--green-primary)' } : {}}>
+                        <td>
+                          <span className="badge badge-green" style={{ fontSize: 10 }}>
+                            USUARIO
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{m.producto}</td>
+                        <td><span className="badge badge-secondary" style={{ fontSize: 10 }}>{m.tipo}</span></td>
+                        <td>
+                          {m.variable} 
+                          {m.isAtributo && <span style={{ fontSize: 9, background: 'var(--border)', color: 'var(--text-muted)', marginLeft: 6, padding: '2px 4px', borderRadius: 4 }}>ATRIBUTO ({m.tipoGrafico.toUpperCase()})</span>}
+                        </td>
+                        <td>{m.analista}</td>
+                        <td className="td-num" style={{ fontSize: 12 }}>{m.fecha}</td>
+                        <td className="td-num" style={{ fontWeight: 700 }}>{m.subgrupos}</td>
+                        <td className="td-num">{m.tam}</td>
+                        <td className="td-num">{m.lse}</td>
+                        <td className="td-num">{m.lie}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <button className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}
+                              onClick={() => handleOpenEdit(m)}>
+                              <Edit3 size={12} /> Editar
+                            </button>
+                            <button className="btn btn-red btn-sm" style={{ padding: '4px 6px', display: 'flex', alignItems: 'center' }}
+                              onClick={(e) => handleDeleteRecord(m.id, e)} title="Eliminar este conjunto de datos">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         )}
