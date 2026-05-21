@@ -4,6 +4,33 @@ import { CheckCircle, Trash2, Edit3, Plus, X, ArrowLeft, Save } from 'lucide-rea
 
 const STORAGE_KEY = 'agrometric_registros';
 
+// Sanitiza un registro para asegurar que todas las propiedades existan con defaults seguros
+function sanitizeRecord(r) {
+  if (!r || typeof r !== 'object') return null;
+  return {
+    id: r.id || `rec_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    producto: r.producto || 'Sin nombre',
+    tipo: r.tipo || 'General',
+    variable: r.variable || '',
+    variableName: r.variableName || r.variable || '',
+    unidad: r.unidad || '',
+    analista: r.analista || '',
+    fecha: r.fecha || '',
+    subgrupos: r.subgrupos || 0,
+    tam: r.tam || 5,
+    lse: r.lse ?? '-',
+    lie: r.lie ?? '-',
+    lseNum: r.lseNum ?? null,
+    lieNum: r.lieNum ?? null,
+    estado: r.estado || 'Pendiente',
+    subgruposData: Array.isArray(r.subgruposData) ? r.subgruposData : [],
+    notas: r.notas || '',
+    isAtributo: !!r.isAtributo,
+    tipoGrafico: r.tipoGrafico || 'p',
+    isDemo: !!r.isDemo,
+  };
+}
+
 // Funciones de utilidad para cargar y guardar en localStorage de forma segura
 function loadRecords() {
   if (typeof window === 'undefined') return [];
@@ -14,8 +41,11 @@ function loadRecords() {
       return [];
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
+    if (!Array.isArray(parsed)) return [];
+    // Sanitizar cada registro y descartar los inválidos
+    return parsed.map(sanitizeRecord).filter(Boolean);
+  } catch (err) {
+    console.error('Error loading records from localStorage:', err);
     return [];
   }
 }
@@ -30,9 +60,10 @@ function saveRecords(records) {
 export default function MuestrasPage() {
   const [activeTab, setActiveTab] = useState('ver');
   const [records, setRecords] = useState([]);
-  const [editingRecord, setEditingRecord] = useState(null); // Registro siendo editado en el modal
-  const [editMatrix, setEditMatrix] = useState([]); // Matriz de subgrupos temporal en edición
-  const [editForm, setEditForm] = useState({}); // Formulario de metadatos temporal en edición
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [editMatrix, setEditMatrix] = useState([]);
+  const [editForm, setEditForm] = useState({});
+  const [loadError, setLoadError] = useState(null);
 
   // Formulario nuevo
   const [form, setForm] = useState({
@@ -44,12 +75,19 @@ export default function MuestrasPage() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    let loaded = loadRecords();
-    if (Array.isArray(loaded) && loaded.some(r => r && (r.isDemo || r.id?.startsWith('demo_')))) {
+    try {
+      let loaded = loadRecords();
+      // Filtrar demos
       loaded = loaded.filter(r => r && !r.isDemo && !r.id?.startsWith('demo_'));
       saveRecords(loaded);
+      setRecords(loaded);
+    } catch (err) {
+      console.error('Error crítico cargando registros:', err);
+      setLoadError(err.message);
+      // Resetear localStorage corrupto
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify([])); } catch {}
+      setRecords([]);
     }
-    setRecords(Array.isArray(loaded) ? loaded : []);
   }, []);
 
   const initMatrix = () => {
@@ -124,9 +162,14 @@ export default function MuestrasPage() {
 
   // Abrir editor detallado de datos
   const handleOpenEdit = (rec) => {
+    if (!rec) return;
     setEditingRecord(rec);
     setEditForm({ ...rec });
-    setEditMatrix(JSON.parse(JSON.stringify(rec.subgruposData))); // Copia profunda
+    try {
+      setEditMatrix(JSON.parse(JSON.stringify(rec.subgruposData || [])));
+    } catch {
+      setEditMatrix([]);
+    }
   };
 
   // Cambiar celda en el editor modal
@@ -198,6 +241,30 @@ export default function MuestrasPage() {
     setEditingRecord(null);
   };
 
+  // Si hubo un error crítico al cargar, mostrar interfaz de recuperación
+  if (loadError) {
+    return (
+      <>
+        <div className="header">
+          <div>
+            <div className="header-title">Registro de Muestras</div>
+            <div className="header-subtitle">Error de carga detectado</div>
+          </div>
+        </div>
+        <div className="page-content fade-in">
+          <div className="card" style={{ padding: '48px 24px', textAlign: 'center' }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#ef4444', marginBottom: 8 }}>Datos del navegador corruptos</div>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 500, margin: '0 auto 20px auto', lineHeight: 1.6 }}>
+              Se detectaron datos inconsistentes en el almacenamiento local de tu navegador. El sistema los ha limpiado automáticamente.
+            </p>
+            <button className="btn btn-primary" onClick={() => { setLoadError(null); setRecords([]); }}>Continuar con Base de Datos Limpia</button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="header">
@@ -255,24 +322,24 @@ export default function MuestrasPage() {
                   </thead>
                   <tbody>
                     {records.map((m, idx) => (
-                      <tr key={idx} style={!m.isDemo ? { background: 'rgba(16,185,129,0.04)', borderLeft: '3px solid var(--green-primary)' } : {}}>
+                      <tr key={idx} style={!m?.isDemo ? { background: 'rgba(16,185,129,0.04)', borderLeft: '3px solid var(--green-primary)' } : {}}>
                         <td>
                           <span className="badge badge-green" style={{ fontSize: 10 }}>
                             USUARIO
                           </span>
                         </td>
-                        <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{m.producto}</td>
-                        <td><span className="badge badge-secondary" style={{ fontSize: 10 }}>{m.tipo}</span></td>
+                        <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{m?.producto || '-'}</td>
+                        <td><span className="badge badge-secondary" style={{ fontSize: 10 }}>{m?.tipo || '-'}</span></td>
                         <td>
-                          {m.variable} 
-                          {m.isAtributo && <span style={{ fontSize: 9, background: 'var(--border)', color: 'var(--text-muted)', marginLeft: 6, padding: '2px 4px', borderRadius: 4 }}>ATRIBUTO ({m.tipoGrafico?.toUpperCase()})</span>}
+                          {m?.variable || '-'} 
+                          {m?.isAtributo && <span style={{ fontSize: 9, background: 'var(--border)', color: 'var(--text-muted)', marginLeft: 6, padding: '2px 4px', borderRadius: 4 }}>ATRIBUTO ({m?.tipoGrafico?.toUpperCase() || 'P'})</span>}
                         </td>
-                        <td>{m.analista}</td>
-                        <td className="td-num" style={{ fontSize: 12 }}>{m.fecha}</td>
-                        <td className="td-num" style={{ fontWeight: 700 }}>{m.subgrupos}</td>
-                        <td className="td-num">{m.tam}</td>
-                        <td className="td-num">{m.lse}</td>
-                        <td className="td-num">{m.lie}</td>
+                        <td>{m?.analista || '-'}</td>
+                        <td className="td-num" style={{ fontSize: 12 }}>{m?.fecha || '-'}</td>
+                        <td className="td-num" style={{ fontWeight: 700 }}>{m?.subgrupos ?? '-'}</td>
+                        <td className="td-num">{m?.tam ?? '-'}</td>
+                        <td className="td-num">{m?.lse ?? '-'}</td>
+                        <td className="td-num">{m?.lie ?? '-'}</td>
                         <td>
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                             <button className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}
@@ -612,7 +679,7 @@ export default function MuestrasPage() {
                       <thead>
                         <tr>
                           <th>Sg</th>
-                          {Array.from({ length: editingRecord.tam }, (_, i) => <th key={i}>X{i + 1}</th>)}
+                          {Array.from({ length: parseInt(editingRecord?.tam) || (editMatrix[0]?.length || 5) }, (_, i) => <th key={i}>X{i + 1}</th>)}
                           <th>X̄</th><th>Acción</th>
                         </tr>
                       </thead>
