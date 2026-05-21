@@ -1,33 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
 
-const PRESETS = {
-  aguacate: {
-    label: "Aguacate — Maduración Premura",
-    efecto: "Alto porcentaje de Aguacates rechazados por maduración prematura",
-    causas: {
-      mano_obra: ["Falta de capacitación en recolección por color", "Corte del pedúnculo muy corto", "Manipulación brusca en acopio"],
-      maquinaria: ["Camión de transporte sin termo de frío", "Calibradores mecánicos sin calibrar", "Ausencia de sensores en bodega"],
-      materiales: ["Cajas de cosecha con esporas", "Fruta sobremadura mezclada en lote", "Dosis incorrecta de fungicida"],
-      metodos: ["Falta de protocolo de madurez cosechada", "Retraso en el traslado al frío", "Lavado con agua caliente"],
-      medicion: ["Termómetros descalibrados", "Prueba de firmeza subjetiva manual", "Sin registro de humedad relativa"],
-      medio_ambiente: ["Exposición al sol directo tras corte", "Bodega de empaque muy húmeda", "Altas temperaturas externas"]
-    }
-  },
-  manzanilla: {
-    label: "Manzanilla — Longitud Tallos",
-    efecto: "Alta variabilidad en la longitud de tallos y flores manchadas",
-    causas: {
-      mano_obra: ["Cosechadores nuevos sin capacitación", "Selección rápida e inadecuada en campo", "Jornadas extensas que cansan la vista"],
-      maquinaria: ["Tijeras de poda desgastadas", "Carro de transporte con vibración", "Secador con flujo de aire obstruido"],
-      materiales: ["Semilla de baja certificación", "Fertilizante aplicado a destiempo", "Agua de riego muy turbia"],
-      metodos: ["Método de corte no estandarizado", "Secado a temperatura muy alta (>40°C)", "Sin separación por lote cosechado"],
-      medicion: ["Regletas de medición borrosas", "Falta de análisis de pH de suelo", "Sin sensor de humedad en secado"],
-      medio_ambiente: ["Lluvias atípicas en floración", "Radiación solar extrema de mediodía", "Ráfagas de viento fuertes"]
-    }
-  }
-};
-
 const CATEGORIES = {
   mano_obra: { label: "Mano de Obra (Personal)", color: "#10b981", angle: 60, isTop: true, dx: 250 },
   maquinaria: { label: "Maquinaria (Equipos)", color: "#3b82f6", angle: 60, isTop: true, dx: 470 },
@@ -59,22 +32,23 @@ export default function IshikawaPage() {
     if (savedCausas) {
       try { setCausas(JSON.parse(savedCausas)); } catch (e) { }
     } else {
-      // Default initial layout
-      loadPresetData('aguacate');
+      const cleared = {
+        mano_obra: [],
+        maquinaria: [],
+        materiales: [],
+        metodos: [],
+        medicion: [],
+        medio_ambiente: []
+      };
+      setEfecto("Escriba el efecto o problema aquí...");
+      setCausas(cleared);
+      saveToLocal("Escriba el efecto o problema aquí...", cleared);
     }
   }, []);
 
   const saveToLocal = (newEfecto, newCausas) => {
     localStorage.setItem('ishikawa_efecto', newEfecto);
     localStorage.setItem('ishikawa_causas', JSON.stringify(newCausas));
-  };
-
-  const loadPresetData = (key) => {
-    const preset = PRESETS[key];
-    if (!preset) return;
-    setEfecto(preset.efecto);
-    setCausas(preset.causas);
-    saveToLocal(preset.efecto, preset.causas);
   };
 
   const updateEfecto = (val) => {
@@ -156,18 +130,6 @@ export default function IshikawaPage() {
 
       <div className="page-content fade-in">
         
-        {/* Presets */}
-        <div className="card no-print" style={{ marginBottom: 16 }}>
-          <div className="section-title" style={{ marginBottom: 12 }}>Cargar Casos Agroindustriales de Estudio</div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {Object.entries(PRESETS).map(([key, v]) => (
-              <button key={key} className="btn btn-secondary" onClick={() => loadPresetData(key)}>
-                {v.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Input panel y editor */}
         <div className="grid-3 no-print" style={{ marginBottom: 16 }}>
           {/* Box 1: Problema / Efecto */}

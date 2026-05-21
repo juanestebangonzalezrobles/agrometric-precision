@@ -43,14 +43,18 @@ const CustomDot = (props) => {
 };
 
 export default function AtributosPage() {
-  const [preset, setPreset] = useState('manzanilla_p');
+  const [preset, setPreset] = useState('custom');
+  const [customMode, setCustomMode] = useState(true);
+  const [ds, setDs] = useState(null);
   const [tipo, setTipo] = useState('p');
-  const [customMode, setCustomMode] = useState(false);
-  const [customRows, setCustomRows] = useState(25);
-  const [customN, setCustomN] = useState(100);
-  const [customValues, setCustomValues] = useState([]);
   const [result, setResult] = useState(null);
-  const [ds, setDs] = useState(manzanillaP);
+  
+  // Custom form state
+  const [customRows, setCustomRows] = useState(25);
+  const [customN, setCustomN] = useState(100); // only used for 'p'
+  const [customValues, setCustomValues] = useState([]);
+
+  // User records from dashboard
   const [userRecords, setUserRecords] = useState([]);
 
   // State for Customizable Report PDF Builder
@@ -62,96 +66,59 @@ export default function AtributosPage() {
     table: true,
   });
 
-  // Load user records of type Attributes
+  // Load user records
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      const records = raw ? JSON.parse(raw) : [];
-      setUserRecords(records.filter(r => r.subgruposData && r.subgruposData.length > 0 && r.isAtributo));
-    } catch { setUserRecords([]); }
+      if (raw) {
+        const records = JSON.parse(raw);
+        const attrRecords = records.filter(r => r.subgruposData && r.subgruposData.length > 0 && r.isAtributo);
+        setUserRecords(attrRecords);
+        if (attrRecords.length > 0) {
+          setPreset('user_0');
+        }
+      }
+    } catch {
+      setUserRecords([]);
+    }
   }, []);
 
-  // Centralized calculator function for Attributes with Nelson Rules
+  // Compute logic
   function computeChartResults(subgrupos, tipoGrafico) {
     if (!subgrupos || subgrupos.length === 0) return null;
-    
-    let chartData;
-    let lcVal;
-    let uclVal;
-    let lclVal;
-    let nelsonAnalysis;
-    let nelsonDiagnostic;
+    let chartData = [];
+    let lcVal = 0, uclVal = 0, lclVal = 0;
+    let nelsonDiagnostic = { totalViolations: 0, analysis: [] };
     
     if (tipoGrafico === 'p') {
-      const totalNP = subgrupos.reduce((a, s) => a + (s.np !== undefined ? s.np : s.c || 0), 0);
-      const totalN = subgrupos.reduce((a, s) => a + (s.n || 100), 0);
-      const pbar = totalNP / totalN;
-      
-      // Calculate standard error for each subgroup and extract Z-scores
-      const zScores = subgrupos.map(s => {
-        const p = (s.np !== undefined ? s.np : s.c || 0) / (s.n || 100);
-        const sigma = Math.sqrt(pbar * (1 - pbar) / (s.n || 100));
-        return sigma > 0 ? (p - pbar) / sigma : 0;
-      });
-      
-      nelsonAnalysis = analyzeNelsonRules(zScores);
-      nelsonDiagnostic = getNelsonDiagnostic(nelsonAnalysis);
+      const totalN = subgrupos.reduce((sum, s) => sum + (s.n || 0), 0);
+      const totalNP = subgrupos.reduce((sum, s) => sum + (s.np || 0), 0);
+      const pbar = totalN > 0 ? totalNP / totalN : 0;
       
       chartData = subgrupos.map((s, i) => {
-        const p = (s.np !== undefined ? s.np : s.c || 0) / (s.n || 100);
-        const sigma = Math.sqrt(pbar * (1 - pbar) / (s.n || 100));
-        const ucl = pbar + 3 * sigma;
-        const lcl = Math.max(0, pbar - 3 * sigma);
-        const zVal = sigma > 0 ? (p - pbar) / sigma : 0;
-        const nelsonPt = nelsonAnalysis[i];
-        
-        return {
-          sg: i + 1,
-          n: s.n || 100,
-          np: s.np !== undefined ? s.np : s.c || 0,
-          p,
-          ucl,
-          lcl,
-          pbar,
-          ooc: p > ucl || p < lcl,
-          zScore: +zVal.toFixed(3),
-          rulesViolated: nelsonPt ? nelsonPt.rulesViolated : [],
-        };
+        const n = s.n || 0;
+        const p = n > 0 ? (s.np || 0) / n : 0;
+        const stdDev = Math.sqrt((pbar * (1 - pbar)) / n);
+        const ucl = pbar + 3 * stdDev;
+        const lcl = Math.max(0, pbar - 3 * stdDev);
+        return { sg: i + 1, p, n, np: s.np, ucl, lcl, pbar, ooc: p > ucl || p < lcl };
       });
       
       lcVal = pbar;
       uclVal = chartData[0]?.ucl;
       lclVal = chartData[0]?.lcl;
+    } else {
+      const k = subgrupos.length;
+      const totalC = subgrupos.reduce((sum, s) => sum + (s.c || 0), 0);
+      const cbar = k > 0 ? totalC / k : 0;
       
-    } else { // 'c' chart (or similar Poisson counts)
-      const cbar = subgrupos.reduce((a, s) => a + (s.c !== undefined ? s.c : s.np || 0), 0) / subgrupos.length;
-      const sigma = Math.sqrt(cbar);
-      
-      const zScores = subgrupos.map(s => {
-        const c = s.c !== undefined ? s.c : s.np || 0;
-        return sigma > 0 ? (c - cbar) / sigma : 0;
-      });
-      
-      nelsonAnalysis = analyzeNelsonRules(zScores);
-      nelsonDiagnostic = getNelsonDiagnostic(nelsonAnalysis);
+      const stdDev = Math.sqrt(cbar);
+      const ucl = cbar + 3 * stdDev;
+      const lcl = Math.max(0, cbar - 3 * stdDev);
       
       chartData = subgrupos.map((s, i) => {
-        const c = s.c !== undefined ? s.c : s.np || 0;
-        const ucl = cbar + 3 * sigma;
-        const lcl = Math.max(0, cbar - 3 * sigma);
-        const zVal = sigma > 0 ? (c - cbar) / sigma : 0;
-        const nelsonPt = nelsonAnalysis[i];
-        
-        return {
-          sg: i + 1,
-          c,
-          ucl,
-          lcl,
-          cbar,
-          ooc: c > ucl || c < lcl,
-          zScore: +zVal.toFixed(3),
-          rulesViolated: nelsonPt ? nelsonPt.rulesViolated : [],
-        };
+        const c = s.c || 0;
+        return { sg: i + 1, c, ucl, lcl, cbar, ooc: c > ucl || c < lcl };
       });
       
       lcVal = cbar;
@@ -159,51 +126,28 @@ export default function AtributosPage() {
       lclVal = chartData[0]?.lcl;
     }
     
-    return {
-      tipo: tipoGrafico,
-      data: chartData,
-      lcVal,
-      uclVal,
-      lclVal,
-      nelsonDiagnostic,
-    };
+    return { tipo: tipoGrafico, data: chartData, lcVal, uclVal, lclVal, nelsonDiagnostic };
   }
-
-  const calcPreset = (key) => {
-    const { ds: d, tipo: t } = PRESETS[key];
-    setDs(d); setTipo(t);
-    const r = computeChartResults(d.subgrupos, t);
-    setResult(r);
-  };
-
-  const handlePreset = (key) => {
-    setPreset(key); setCustomMode(false); calcPreset(key);
-  };
 
   const handleCustomCalc = () => {
     try {
       if (tipo === 'p') {
-        const sgs = customValues.map((v, i) => ({ n: customN, np: +v || 0 }));
-        const r = computeChartResults(sgs, 'p');
-        setResult(r);
+        const sgs = customValues.map(v => ({ n: customN, np: +v || 0 }));
+        setResult(computeChartResults(sgs, 'p'));
       } else if (tipo === 'c') {
         const sgs = customValues.map(v => ({ c: +v || 0 }));
-        const r = computeChartResults(sgs, 'c');
-        setResult(r);
+        setResult(computeChartResults(sgs, 'c'));
       }
     } catch { alert('Error en los datos'); }
   };
 
-  // Initial load preset
   useEffect(() => {
-    calcPreset('manzanilla_p');
-  }, []);
-
-  // Update preset trigger when user records load
-  useEffect(() => {
-    if (preset !== 'custom' && !preset.startsWith('user_')) {
-      calcPreset(preset);
+    if (preset === 'custom') {
+      setCustomMode(true);
+      setDs(null);
+      handleCustomCalc();
     } else if (preset.startsWith('user_')) {
+      setCustomMode(false);
       const idx = parseInt(preset.replace('user_', ''));
       const rec = userRecords[idx];
       if (rec && rec.subgruposData) {
@@ -212,79 +156,49 @@ export default function AtributosPage() {
           atributo: rec.variableName || rec.variable,
           subgrupos: rec.subgruposData,
           tipoGrafico: rec.tipoGrafico || 'p',
-          analista: rec.analista,
-          fecha: rec.fecha,
         };
         setDs(fakeDs);
         setTipo(rec.tipoGrafico || 'p');
-        try {
-          const r = computeChartResults(rec.subgruposData, rec.tipoGrafico || 'p');
-          setResult(r);
-        } catch { alert('Error al calcular. Verifica tus datos de atributos.'); }
+        setResult(computeChartResults(rec.subgruposData, rec.tipoGrafico || 'p'));
       }
     }
   }, [preset, userRecords]);
 
-  const handlePrint = () => {
-    setIsReportModalOpen(false);
-    setTimeout(() => {
-      window.print();
-    }, 150);
-  };
-
-  const nelsonViolationsCount = result?.nelsonDiagnostic?.totalViolations || 0;
-  const classicOocCount = result ? result.data.filter(d => d.ooc).length : 0;
-  const totalAlerts = Math.max(nelsonViolationsCount, classicOocCount);
+  const totalAlerts = result ? result.data.filter(d => d.ooc).length : 0;
 
   return (
     <>
       <div className="header no-print">
         <div>
-          <div className="header-title">Control de Atributos — Gráficos P, NP, C, U</div>
-          <div className="header-subtitle">Gráficos de inestabilidad de atributos continuos integrados con Nelson Rules</div>
+          <div className="header-title">Control de Atributos</div>
+          <div className="header-subtitle">Gráficos de inestabilidad de atributos continuos.</div>
         </div>
         <button className="btn btn-primary" onClick={() => setIsReportModalOpen(true)}>
           <Printer size={16} /> Generar Reporte PDF
         </button>
       </div>
 
-      {/* Header formatted specifically for Print Layout */}
-      <div className="print-only" style={{ display: 'none', marginBottom: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #10b981', paddingBottom: 10 }}>
-          <div>
-            <h1 style={{ fontSize: '22pt', fontWeight: 800, color: '#0f172a', margin: 0 }}>AGROMETRIC PRECISION</h1>
-            <p style={{ fontSize: '10pt', color: '#475569', margin: '4px 0 0 0' }}>Reporte Analítico del Proceso de Calidad</p>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <p style={{ fontSize: '9pt', color: '#64748b', margin: 0 }}>Generado: {new Date().toLocaleDateString()}</p>
-            <p style={{ fontSize: '10pt', fontWeight: 700, color: '#10b981', margin: '2px 0 0 0' }}>Gráficos Control de Atributos</p>
-          </div>
-        </div>
-      </div>
-
       <div className="page-content fade-in">
-
-        {/* Selector (No print) */}
         <div className="card no-print" style={{ marginBottom: 16 }}>
           <div className="section-title" style={{ marginBottom: 12 }}>Seleccionar Tipo de Gráfico y Datos</div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {[
-              { key: 'manzanilla_p', label: 'Manzanilla — Gráfico P' },
-              { key: 'tomate_c', label: 'Tomate — Gráfico C' },
-              ...userRecords.map((r, i) => ({ key: `user_${i}`, label: `${r.producto} — Gráfico ${r.tipoGrafico?.toUpperCase() || 'P'}`, user: true })),
+              ...userRecords.map((r, i) => ({ key: `user_${i}`, label: `${r.producto} — Gráfico ${r.tipoGrafico?.toUpperCase() || 'P'}` })),
               { key: 'custom', label: 'Mis datos' },
             ].map(opt => (
-              <button key={opt.key} className={`btn ${preset === opt.key && !customMode ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => handlePreset(opt.key)}
-                style={opt.user ? { borderColor: 'var(--green-primary)', color: preset === opt.key ? undefined : 'var(--green-light)' } : {}}>
+              <button key={opt.key} className={`btn ${preset === opt.key ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setPreset(opt.key)}>
                 {opt.label}
-                {opt.user && <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.7 }}>TUYO</span>}
               </button>
             ))}
           </div>
+          {userRecords.length === 0 && (
+            <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
+              Guarda un registro de <strong>Atributos</strong> en la pestaña Muestras para analizarlo aquí.
+            </div>
+          )}
         </div>
 
-        {/* Custom entry (No print) */}
         {customMode && (
           <div className="card no-print" style={{ marginBottom: 16 }}>
             <div className="section-title" style={{ marginBottom: 12 }}>Configurar Datos Personalizados</div>
@@ -331,8 +245,8 @@ export default function AtributosPage() {
         {!customMode && (
           <div className={`${!printConfig.info ? 'no-print' : ''}`} style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
             {[
-              { label: 'Producto', val: ds.producto },
-              { label: 'Atributo Controlado', val: ds.atributo },
+              { label: 'Producto', val: ds?.producto },
+              { label: 'Atributo Controlado', val: ds?.atributo },
               { label: 'Tipo Gráfico', val: result?.tipo?.toUpperCase() },
               { label: 'Alertas Estadísticas', val: totalAlerts, color: totalAlerts > 0 ? '#f59e0b' : 'var(--green-light)' },
             ].map((item, i) => (

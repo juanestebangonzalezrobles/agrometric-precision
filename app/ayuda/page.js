@@ -551,8 +551,640 @@ function renderMarkdown(text) {
   return elements;
 }
 
+// COMPONENTE DE TOUR INTERACTIVO Y SIMULADOR PASO A PASO
+function InteractiveTour({ onComplete }) {
+  const [step, setStep] = useState(0);
+
+  // Paso 0: Registro de muestras
+  const [prodSim, setProdSim] = useState('Limón Eureka');
+  const [varSim, setVarSim] = useState('Diámetro (mm)');
+  const [lseSim, setLseSim] = useState(55);
+  const [lieSim, setLieSim] = useState(40);
+  const [lotCreated, setLotCreated] = useState(false);
+  const [matrixSim, setMatrixSim] = useState([
+    [45.5, 48.2, 46.1, 47.9, 44.2],
+    [46.8, 47.5, 49.3, 43.1, 45.9],
+    [52.1, 54.8, 50.4, 53.0, 51.5]
+  ]);
+
+  // Paso 1: Gráficos de Control y Nelson Rules
+  const [hoveredPt, setHoveredPt] = useState(null);
+
+  // Paso 2: Normalidad y Box-Cox
+  const [boxCoxActive, setBoxCoxActive] = useState(false);
+
+  // Paso 3: Capacidad del proceso
+  const [cpkSlider, setCpkSlider] = useState(1.15);
+
+  // Paso 4: Ishikawa / Pareto
+  const [improveTab, setImproveTab] = useState('ishikawa');
+  const [activeBone, setActiveBone] = useState(null);
+
+  // Paso 5: PDF
+  const [printSim, setPrintSim] = useState({ info: true, chart: true, diagnostic: true, table: false });
+
+  const stepsInfo = [
+    { title: '1. Registrar Muestras', desc: 'Aprende a ingresar lotes y editar celdas.' },
+    { title: '2. Estabilidad de Procesos', desc: 'Identifica inestabilidad con Nelson Rules.' },
+    { title: '3. Prueba de Normalidad', desc: 'Box-Cox para transformar datos no normales.' },
+    { title: '4. Índices de Capacidad', desc: 'Entiende el Cpk y las Partes por Millón.' },
+    { title: '5. Análisis Causa Raíz', desc: 'Diagramas de Pareto y espina de Ishikawa.' },
+    { title: '6. Reporte PDF', desc: 'Exportación selectiva y profesional.' }
+  ];
+
+  const simulatePPM = (cpk) => {
+    const z = 3 * cpk;
+    const t = 1 / (1 + 0.2316419 * Math.abs(z));
+    const d = 0.3989423 * Math.exp(-z * z / 2);
+    const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.7814779 + t * (1.8212560 + t * 1.3302744))));
+    const cdf = z > 0 ? 1 - p : p;
+    const rate = 2 * (1 - cdf) * 1000000;
+    return Math.round(rate);
+  };
+
+  const handleNext = () => {
+    if (step < 5) {
+      setStep(step + 1);
+    } else {
+      if (onComplete) onComplete();
+    }
+  };
+
+  const handlePrev = () => {
+    if (step > 0) setStep(step - 1);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Selector de pasos estilizado premium (Steppers) */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        background: 'rgba(255,255,255,0.02)', padding: '12px 20px', borderRadius: 12,
+        border: '1px solid var(--border)', flexWrap: 'wrap', gap: 10
+      }}>
+        {stepsInfo.map((s, idx) => {
+          const isActive = idx === step;
+          const isDone = idx < step;
+          return (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => setStep(idx)}>
+              <div style={{
+                width: 28, height: 28, borderRadius: '50%', fontSize: 12, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: isActive ? 'var(--green-glow)' : isDone ? 'var(--green-dark)' : 'rgba(255,255,255,0.05)',
+                color: isActive || isDone ? 'var(--green-light)' : 'var(--text-muted)',
+                border: `1px solid ${isActive ? 'var(--green-primary)' : isDone ? 'var(--green-primary)' : 'var(--border)'}`,
+                boxShadow: isActive ? '0 0 10px rgba(16,185,129,0.3)' : 'none',
+                transition: 'all 0.3s'
+              }}>
+                {isDone ? '✓' : idx + 1}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: 11.5, fontWeight: isActive ? 700 : 500, color: isActive ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                  {s.title.split('. ')[1]}
+                </span>
+              </div>
+              {idx < stepsInfo.length - 1 && (
+                <div style={{
+                  width: 20, height: 1, background: isDone ? 'var(--green-primary)' : 'var(--border)',
+                  marginLeft: 8, display: 'block'
+                }} className="no-mobile" />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Panel principal de dos columnas */}
+      <div className="grid-2" style={{ gap: 20, minHeight: 380, alignItems: 'stretch' }}>
+        {/* Columna Izquierda: Instrucciones */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: 20, borderLeft: '3px solid var(--green-primary)' }}>
+          <div>
+            <span className="badge badge-green" style={{ marginBottom: 12, fontSize: 10 }}>Paso {step + 1} de 6</span>
+            
+            {step === 0 && (
+              <>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 12 }}>
+                  📝 Registro de Lotes y Matriz de Datos
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12 }}>
+                  Todo control de calidad comienza registrando tus datos. En AgroMetric, puedes crear lotes de forma interactiva especificando:
+                </p>
+                <ul style={{ paddingLeft: 16, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.8, marginBottom: 14 }}>
+                  <li><strong>Límites del Cliente (LSE / LIE):</strong> Imprescindibles para el cálculo de capacidad.</li>
+                  <li><strong>Estructura de Subgrupos:</strong> Tamaño del muestreo (ej. n = 5 frutos) y cantidad total de muestras.</li>
+                  <li><strong>Matriz de Edición Bidimensional:</strong> Edita celdas directamente o borra/agrega filas completas en el modal si te equivocaste en un valor.</li>
+                </ul>
+                <div className="interpretation good" style={{ padding: '8px 12px', fontSize: 11.5, borderRadius: 6 }}>
+                  💡 <strong>Tip de calibración:</strong> Mantén el tamaño de subgrupo (n) constante para asegurar que las bandas de los gráficos X̄ se mantengan estables.
+                </div>
+              </>
+            )}
+
+            {step === 1 && (
+              <>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 12 }}>
+                  📊 Gráficos de Control y Reglas de Nelson
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12 }}>
+                  Los gráficos calculan límites de control estadístico naturales (LCS y LCI) para determinar si la variación de tu proceso es estable o inestable.
+                </p>
+                <ul style={{ paddingLeft: 16, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.8, marginBottom: 14 }}>
+                  <li><strong>Estabilidad:</strong> Los puntos deben oscilar al azar alrededor de la línea central verde.</li>
+                  <li><strong>Nelson Rules (Inestabilidad):</strong> La app busca automáticamente patrones inusuales (como racha de 9 puntos de un lado de la media, o tendencias).</li>
+                  <li><strong>Alertas de Control (Rojo):</strong> Si un punto rompe alguna regla, se colorea de rojo. Pasa el ratón por encima en el simulador para ver la alerta.</li>
+                </ul>
+                <div className="interpretation warning" style={{ padding: '8px 12px', fontSize: 11.5, borderRadius: 6 }}>
+                  ⚠️ <strong>¡Atención!</strong> Un punto &quot;fuera de límites&quot; no es un producto malo, sino una señal de que el proceso cambió de comportamiento. ¡Investígalo!
+                </div>
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 12 }}>
+                  🧪 Pruebas de Normalidad y Box‑Cox
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12 }}>
+                  Para calcular los índices de capacidad Cp y Cpk con precisión, los datos deben comportarse estadísticamente como una Campana de Gauss (Normalidad).
+                </p>
+                <ul style={{ paddingLeft: 16, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.8, marginBottom: 14 }}>
+                  <li><strong>Anderson-Darling:</strong> Si el p-value es superior a 0.05, tus datos son normales.</li>
+                  <li><strong>Transformación Box-Cox:</strong> Si tus datos no son normales (sesgados), puedes activar Box-Cox. La app encontrará el λ óptimo para normalizarlos en milisegundos.</li>
+                </ul>
+                <div className="interpretation good" style={{ padding: '8px 12px', fontSize: 11.5, borderRadius: 6 }}>
+                  💡 Prueba el simulador de la derecha. Activa la transformación <strong>Box-Cox</strong> para ver cómo se normaliza la campana y los datos se alinean en la diagonal.
+                </div>
+              </>
+            )}
+
+            {step === 3 && (
+              <>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 12 }}>
+                  📈 Índices Cp / Cpk y Defectos PPM
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12 }}>
+                  Los índices de capacidad miden si el proceso cumple la tolerancia técnica del cliente.
+                </p>
+                <ul style={{ paddingLeft: 16, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.8, marginBottom: 14 }}>
+                  <li><strong>Cp (Potencial):</strong> Relación entre el ancho de especificación y la variación (¿Cabe la campana en los límites?).</li>
+                  <li><strong>Cpk (Real):</strong> Considera el centrado de la campana. Cpk ≥ 1.33 es la meta industrial estándar.</li>
+                  <li><strong>Partes por Millón (PPM):</strong> Estima cuántas unidades defectuosas producirás por cada millón de unidades cosechadas/empacadas.</li>
+                </ul>
+                <div className="interpretation good" style={{ padding: '8px 12px', fontSize: 11.5, borderRadius: 6 }}>
+                  💡 Usa la barra de control de la derecha para mover el Cpk y observa cómo varía la tasa de defectos y cómo la curva se contrae de forma segura.
+                </div>
+              </>
+            )}
+
+            {step === 4 && (
+              <>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 12 }}>
+                  🐠 Mejora Continua: Pareto e Ishikawa
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12 }}>
+                  Cuando el proceso muestra inestabilidad o baja capacidad, usamos herramientas Kaizen:
+                </p>
+                <ul style={{ paddingLeft: 16, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.8, marginBottom: 14 }}>
+                  <li><strong>Pareto (Principio 80/20):</strong> Identifica el 20% de las tipologías de defectos que concentran el 80% de los rechazos.</li>
+                  <li><strong>Diagrama de Ishikawa (6M):</strong> Divide la lluvia de ideas en 6 factores clave: Mano de obra, Maquinaria, Métodos, Materiales, Medición y Medio ambiente.</li>
+                </ul>
+                <div className="interpretation good" style={{ padding: '8px 12px', fontSize: 11.5, borderRadius: 6 }}>
+                  💡 Haz clic en las pestañas en el simulador y presiona sobre las espinas de Ishikawa para ver ejemplos reales.
+                </div>
+              </>
+            )}
+
+            {step === 5 && (
+              <>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 12 }}>
+                  📋 Generación de Reportes PDF Premium
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12 }}>
+                  Presenta informes profesionales de calidad con un solo clic. El Constructor te permite:
+                </p>
+                <ul style={{ paddingLeft: 16, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.8, marginBottom: 14 }}>
+                  <li><strong>Selección Modular:</strong> Oculta las tablas largas o desactiva gráficos secundarios marcando los checks.</li>
+                  <li><strong>Impresión Optimizada:</strong> Usa el diálogo nativo (Chrome/Edge) para conservar la alta resolución de los gráficos vectoriales SVG.</li>
+                </ul>
+                <div className="interpretation good" style={{ padding: '8px 12px', fontSize: 11.5, borderRadius: 6 }}>
+                  💡 <strong>Tip de exportación:</strong> Asegúrate de activar &quot;Gráficos de fondo&quot; en las opciones de impresión de tu navegador para conservar la estética premium.
+                </div>
+              </>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+            {step > 0 && (
+              <button className="btn btn-secondary btn-sm" onClick={handlePrev}>← Atrás</button>
+            )}
+            <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={handleNext}>
+              {step < 5 ? 'Siguiente Paso →' : 'Completar Tutorial ✓'}
+            </button>
+          </div>
+        </div>
+
+        {/* Columna Derecha: Simulador Interactivo */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', padding: 20, background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--border)' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12, letterSpacing: 0.5 }}>
+            🎮 Simulador de Interfaz
+          </div>
+
+          {/* SIMULADOR PASO 0 */}
+          {step === 0 && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ background: 'var(--bg-card)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--green-light)', marginBottom: 8 }}>Formulario de Lote</div>
+                <div className="grid-2" style={{ gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Producto</label>
+                    <input className="form-input" style={{ padding: '4px 8px', fontSize: 11 }} value={prodSim} onChange={e => setProdSim(e.target.value)} disabled={lotCreated} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Variable de control</label>
+                    <input className="form-input" style={{ padding: '4px 8px', fontSize: 11 }} value={varSim} onChange={e => setVarSim(e.target.value)} disabled={lotCreated} />
+                  </div>
+                </div>
+                <div className="grid-2" style={{ gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Límite Inferior (LIE)</label>
+                    <input type="number" className="form-input" style={{ padding: '4px 8px', fontSize: 11 }} value={lieSim} onChange={e => setLieSim(+e.target.value)} disabled={lotCreated} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Límite Superior (LSE)</label>
+                    <input type="number" className="form-input" style={{ padding: '4px 8px', fontSize: 11 }} value={lseSim} onChange={e => setLseSim(+e.target.value)} disabled={lotCreated} />
+                  </div>
+                </div>
+                {!lotCreated ? (
+                  <button className="btn btn-primary btn-sm" style={{ width: '100%', padding: '4px 8px', fontSize: 11 }} onClick={() => setLotCreated(true)}>
+                    + Crear Registro Simulador
+                  </button>
+                ) : (
+                  <button className="btn btn-secondary btn-sm" style={{ width: '100%', padding: '4px 8px', fontSize: 11 }} onClick={() => setLotCreated(false)}>
+                    Reiniciar Formulario
+                  </button>
+                )}
+              </div>
+
+              {lotCreated && (
+                <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-card)', padding: 10, borderRadius: 8, border: '1px solid var(--green-primary)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700 }}>Matriz de Datos ({prodSim}):</div>
+                    <span style={{ fontSize: 9, color: 'var(--green-light)' }}>Edita los valores:</span>
+                  </div>
+                  <div style={{ maxHeight: 110, overflowY: 'auto' }}>
+                    <table style={{ width: '100%', fontSize: 11 }}>
+                      <thead>
+                        <tr>
+                          <th>Subgrupo</th>
+                          {matrixSim[0].map((_, i) => <th key={i}>X{i+1}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {matrixSim.map((row, ri) => (
+                          <tr key={ri}>
+                            <td style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Sg {ri+1}</td>
+                            {row.map((cell, ci) => (
+                              <td key={ci}>
+                                <input type="number" style={{
+                                  width: '100%', padding: 2, background: 'rgba(255,255,255,0.03)',
+                                  border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)',
+                                  fontSize: 10.5, textAlign: 'center'
+                                }} value={cell} onChange={e => {
+                                  const next = [...matrixSim];
+                                  next[ri][ci] = parseFloat(e.target.value) || 0;
+                                  setMatrixSim(next);
+                                }} />
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SIMULADOR PASO 1 */}
+          {step === 1 && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>Gráfico Xbar Simulador (Interactivo)</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Pasa el cursor por encima del punto rojo (P3):</div>
+              <div style={{ height: 160, background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px solid var(--border)', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {/* SVG Chart */}
+                <svg width="280" height="130" viewBox="0 0 280 130">
+                  {/* Lines */}
+                  <line x1="20" y1="20" x2="260" y2="20" stroke="#ef4444" strokeWidth="1" strokeDasharray="3 3" />
+                  <text x="262" y="24" fill="#ef4444" fontSize="8">LCS (3σ)</text>
+                  
+                  <line x1="20" y1="65" x2="260" y2="65" stroke="var(--green-primary)" strokeWidth="1.5" />
+                  <text x="262" y="69" fill="var(--green-primary)" fontSize="8">LC (Media)</text>
+                  
+                  <line x1="20" y1="110" x2="260" y2="110" stroke="#ef4444" strokeWidth="1" strokeDasharray="3 3" />
+                  <text x="262" y="114" fill="#ef4444" fontSize="8">LCI</text>
+
+                  {/* Points & Lines */}
+                  <polyline fill="none" stroke="var(--green-light)" strokeWidth="1.5"
+                    points="30,80 80,60 130,12 180,75 230,55" />
+                  
+                  {[
+                    { x: 30, y: 80, label: 'P1', val: 22.4, status: 'ok' },
+                    { x: 80, y: 60, label: 'P2', val: 23.1, status: 'ok' },
+                    { x: 130, y: 12, label: 'P3', val: 32.8, status: 'ooc', alert: '⚠️ Alerta R1: Punto fuera de límites de 3σ. Posible descalibración.' },
+                    { x: 180, y: 75, label: 'P4', val: 21.9, status: 'ok' },
+                    { x: 230, y: 55, label: 'P5', val: 24.0, status: 'ok' }
+                  ].map((p, i) => (
+                    <circle key={i} cx={p.x} cy={p.y} r={p.status === 'ooc' ? 6 : 4}
+                      fill={p.status === 'ooc' ? '#ef4444' : 'var(--green-light)'}
+                      style={{ cursor: 'pointer' }}
+                      onMouseEnter={() => setHoveredPt(p)}
+                      onMouseLeave={() => setHoveredPt(null)} />
+                  ))}
+                </svg>
+
+                {/* Tooltip flotante simulado */}
+                {hoveredPt && (
+                  <div style={{
+                    position: 'absolute', top: 10, left: 10, right: 10,
+                    background: hoveredPt.status === 'ooc' ? 'rgba(239,68,68,0.95)' : 'rgba(15,23,42,0.95)',
+                    color: '#fff', padding: '6px 10px', borderRadius: 6, fontSize: 10,
+                    border: '1px solid rgba(255,255,255,0.2)', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                  }}>
+                    <strong>Subgrupo {hoveredPt.label}:</strong> {hoveredPt.val} <br />
+                    {hoveredPt.alert || 'Procesamiento estable.'}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 8, fontSize: 11, border: '1px solid var(--border)' }}>
+                <span style={{ fontWeight: 700 }}>Diagnóstico Técnico:</span>
+                <p style={{ margin: '4px 0 0', fontSize: 10.5, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                  P3 cruzó el LCS superior. Posible fatiga en la máquina clasificadora. Se recomienda abrir Ishikawa en espina de Maquinaria.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* SIMULADOR PASO 2 */}
+          {step === 2 && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>Prueba de Normalidad</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Box-Cox:</span>
+                  <button className={`btn btn-sm ${boxCoxActive ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '2px 8px', fontSize: 10 }} onClick={() => setBoxCoxActive(!boxCoxActive)}>
+                    {boxCoxActive ? 'ACTIVO' : 'INACTIVO'}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ flex: 1, display: 'flex', gap: 12 }}>
+                {/* Histograma / Curva */}
+                <div style={{ flex: 1, background: 'rgba(255,255,255,0.02)', padding: 8, borderRadius: 8, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                  <span style={{ fontSize: 9, color: 'var(--text-muted)', marginBottom: 4 }}>Distribución de Muestras</span>
+                  <svg width="150" height="90" viewBox="0 0 150 90">
+                    {/* Barras de Histograma */}
+                    {!boxCoxActive ? (
+                      /* Sesgado a la derecha */
+                      <>
+                        <rect x="10" y="50" width="18" height="40" fill="var(--green-dark)" opacity="0.8" />
+                        <rect x="32" y="10" width="18" height="80" fill="var(--green-dark)" opacity="0.8" />
+                        <rect x="54" y="30" width="18" height="60" fill="var(--green-dark)" opacity="0.8" />
+                        <rect x="76" y="60" width="18" height="30" fill="var(--green-dark)" opacity="0.8" />
+                        <rect x="98" y="75" width="18" height="15" fill="var(--green-dark)" opacity="0.8" />
+                        <path d="M 10 70 Q 41 5, 54 45 T 120 85" fill="none" stroke="#f59e0b" strokeWidth="2" />
+                      </>
+                    ) : (
+                      /* Simétrico */
+                      <>
+                        <rect x="10" y="70" width="18" height="20" fill="var(--green-light)" opacity="0.8" />
+                        <rect x="32" y="35" width="18" height="55" fill="var(--green-light)" opacity="0.8" />
+                        <rect x="54" y="10" width="18" height="80" fill="var(--green-light)" opacity="0.8" />
+                        <rect x="76" y="35" width="18" height="55" fill="var(--green-light)" opacity="0.8" />
+                        <rect x="98" y="70" width="18" height="20" fill="var(--green-light)" opacity="0.8" />
+                        <path d="M 10 80 Q 64 5, 118 80" fill="none" stroke="#f59e0b" strokeWidth="2" />
+                      </>
+                    )}
+                  </svg>
+                  <span className={`badge ${boxCoxActive ? 'badge-green' : 'badge-red'}`} style={{ fontSize: 9, marginTop: 4 }}>
+                    {boxCoxActive ? 'Distribución Normal (p = 0.74)' : 'No Normal (p = 0.003)'}
+                  </span>
+                </div>
+
+                {/* QQ Plot */}
+                <div style={{ flex: 1, background: 'rgba(255,255,255,0.02)', padding: 8, borderRadius: 8, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                  <span style={{ fontSize: 9, color: 'var(--text-muted)', marginBottom: 4 }}>Q-Q Plot de Cuantiles</span>
+                  <svg width="100" height="90" viewBox="0 0 100 90">
+                    <line x1="10" y1="80" x2="90" y2="10" stroke="#ef4444" strokeWidth="1" strokeDasharray="3 3" />
+                    {!boxCoxActive ? (
+                      /* Puntos curvados */
+                      <>
+                        <circle cx="20" cy="85" r="2.5" fill="#f59e0b" />
+                        <circle cx="35" cy="80" r="2.5" fill="#f59e0b" />
+                        <circle cx="50" cy="65" r="2.5" fill="#f59e0b" />
+                        <circle cx="65" cy="40" r="2.5" fill="#f59e0b" />
+                        <circle cx="80" cy="15" r="2.5" fill="#f59e0b" />
+                      </>
+                    ) : (
+                      /* Puntos alineados en diagonal */
+                      <>
+                        <circle cx="20" cy="71" r="2.5" fill="var(--green-light)" />
+                        <circle cx="35" cy="58" r="2.5" fill="var(--green-light)" />
+                        <circle cx="50" cy="45" r="2.5" fill="var(--green-light)" />
+                        <circle cx="65" cy="32" r="2.5" fill="var(--green-light)" />
+                        <circle cx="80" cy="19" r="2.5" fill="var(--green-light)" />
+                      </>
+                    )}
+                  </svg>
+                  <span style={{ fontSize: 8.5, color: 'var(--text-muted)', marginTop: 4 }}>
+                    {boxCoxActive ? 'Puntos alineados' : 'Desviación sistemática'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SIMULADOR PASO 3 */}
+          {step === 3 && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>Cálculo de Capacidad del Proceso</div>
+              
+              <div style={{ background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700 }}>Ajustar Cpk:</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, fontFamily: 'JetBrains Mono', color: cpkSlider >= 1.33 ? 'var(--green-light)' : cpkSlider >= 1 ? '#eab308' : '#ef4444' }}>
+                    {cpkSlider.toFixed(2)}
+                  </span>
+                </div>
+                <input type="range" min="0.5" max="1.8" step="0.05" value={cpkSlider} onChange={e => setCpkSlider(+e.target.value)} style={{ width: '100%', accentColor: 'var(--green-primary)' }} />
+              </div>
+
+              <div className="grid-2" style={{ gap: 8 }}>
+                <div className="card" style={{ padding: 8, textAlign: 'center' }}>
+                  <div style={{ fontSize: 8.5, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Estado de Capacidad</div>
+                  <span className={`badge ${cpkSlider >= 1.33 ? 'badge-green' : cpkSlider >= 1 ? 'badge-yellow' : 'badge-red'}`} style={{ fontSize: 10, marginTop: 4 }}>
+                    {cpkSlider >= 1.33 ? 'Proceso Capaz' : cpkSlider >= 1 ? 'Capacidad Marginal' : 'Proceso No Capaz'}
+                  </span>
+                </div>
+                <div className="card" style={{ padding: 8, textAlign: 'center' }}>
+                  <div style={{ fontSize: 8.5, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Defectos PPM</div>
+                  <div style={{ fontSize: 12, fontWeight: 800, fontFamily: 'JetBrains Mono', marginTop: 4 }}>
+                    {simulatePPM(cpkSlider).toLocaleString()} PPM
+                  </div>
+                </div>
+              </div>
+
+              {/* Curva dinámica SVG */}
+              <div style={{ flex: 1, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="240" height="70" viewBox="0 0 240 70">
+                  {/* LIE / LSE */}
+                  <line x1="45" y1="5" x2="45" y2="65" stroke="#ef4444" strokeWidth="1.5" />
+                  <text x="48" y="15" fill="#ef4444" fontSize="7">LIE</text>
+                  <line x1="195" y1="5" x2="195" y2="65" stroke="#ef4444" strokeWidth="1.5" />
+                  <text x="175" y="15" fill="#ef4444" fontSize="7">LSE</text>
+
+                  {/* Curva Normal Dinámica (basada en Cpk slider) */}
+                  {/* Mayor Cpk = menor desviación, campana más angosta y alta */}
+                  {(() => {
+                    const stdDev = 38 / (cpkSlider || 1);
+                    const mean = 120;
+                    let pathD = `M 10 65`;
+                    for (let x = 10; x <= 230; x += 3) {
+                      const y = 65 - 55 * Math.exp(-0.5 * Math.pow((x - mean) / stdDev, 2));
+                      pathD += ` L ${x} ${y}`;
+                    }
+                    return (
+                      <path d={pathD} fill="rgba(16,185,129,0.15)" stroke="var(--green-primary)" strokeWidth="2" />
+                    );
+                  })()}
+                </svg>
+              </div>
+            </div>
+          )}
+
+          {/* SIMULADOR PASO 4 */}
+          {step === 4 && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* Tabs para alternar */}
+              <div className="tabs" style={{ marginBottom: 4 }}>
+                <button className={`tab ${improveTab === 'ishikawa' ? 'active' : ''}`} style={{ fontSize: 10.5, padding: '4px 10px' }} onClick={() => setImproveTab('ishikawa')}>Ishikawa (Espina)</button>
+                <button className={`tab ${improveTab === 'pareto' ? 'active' : ''}`} style={{ fontSize: 10.5, padding: '4px 10px' }} onClick={() => setImproveTab('pareto')}>Pareto (80/20)</button>
+              </div>
+
+              {improveTab === 'ishikawa' ? (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Haz clic en las espinas para ver las causas:</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                    {[
+                      { key: 'Mano de obra', causes: ['Falta capacitación', 'Fatiga del turno nocturno', 'Operario nuevo'] },
+                      { key: 'Maquinaria', causes: ['Descalibración báscula', 'Banda transportadora sucia'] },
+                      { key: 'Materiales', causes: ['Lote de cajas húmedas', 'Variabilidad del fruto'] },
+                      { key: 'Métodos', causes: ['Ritmo de empaque alto', 'Error en pesaje'] }
+                    ].map(bone => (
+                      <button key={bone.key} className="btn btn-secondary btn-sm"
+                        style={{
+                          fontSize: 10.5, textAlign: 'left', padding: '6px 8px',
+                          border: activeBone?.key === bone.key ? '1px solid var(--green-primary)' : '1px solid var(--border)',
+                          background: activeBone?.key === bone.key ? 'rgba(16,185,129,0.06)' : 'transparent',
+                          color: activeBone?.key === bone.key ? 'var(--green-light)' : 'var(--text-secondary)'
+                        }}
+                        onClick={() => setActiveBone(bone)}>
+                        🦴 {bone.key}
+                      </button>
+                    ))}
+                  </div>
+
+                  {activeBone && (
+                    <div style={{ background: 'rgba(255,255,255,0.02)', padding: 8, borderRadius: 6, border: '1px solid var(--border)', fontSize: 11 }}>
+                      <strong style={{ color: 'var(--green-light)' }}>Causas en {activeBone.key}:</strong>
+                      <ul style={{ margin: '4px 0 0', paddingLeft: 14, fontSize: 10.5, color: 'var(--text-muted)' }}>
+                        {activeBone.causes.map((c, i) => <li key={i}>{c}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Clasificación de defectos vitales (Pareto):</div>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', background: 'rgba(255,255,255,0.02)', padding: 8, borderRadius: 8, border: '1px solid var(--border)' }}>
+                    {/* Mini gráfico Pareto simulado */}
+                    {[
+                      { name: 'Manchas', count: 48, pct: 48, color: '#ef4444' },
+                      { name: 'Calibre pequeño', count: 32, pct: 80, color: '#ef4444' },
+                      { name: 'Deformidad', count: 12, pct: 92, color: 'var(--text-muted)' },
+                      { name: 'Golpes', count: 8, pct: 100, color: 'var(--text-muted)' }
+                    ].map((item, idx) => (
+                      <div key={idx} style={{ marginBottom: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, marginBottom: 2 }}>
+                          <span style={{ fontWeight: 600 }}>{item.name}</span>
+                          <span style={{ color: item.color }}>{item.count} def. ({item.pct}%)</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 3 }}>
+                            <div style={{ width: `${item.pct - (idx > 0 ? [48, 32, 12, 8][idx - 1] : 0)}%`, height: '100%', background: item.color, borderRadius: 3 }} />
+                          </div>
+                          <span style={{ fontSize: 8.5, color: item.color }}>{idx < 2 ? '⚠️ Vital' : 'Trivial'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SIMULADOR PASO 5 */}
+          {step === 5 && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>Configuración de Reporte Premium</div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
+                {Object.keys(printSim).map(k => (
+                  <label key={k} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 11, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={printSim[k]} style={{ accentColor: 'var(--green-primary)' }}
+                      onChange={e => setPrintSim(prev => ({ ...prev, [k]: e.target.checked }))} />
+                    <span style={{ textTransform: 'capitalize', fontWeight: 600 }}>{k === 'info' ? 'Ficha técnica' : k === 'chart' ? 'Gráfico de control' : k === 'diagnostic' ? 'Diagnóstico Nelson' : 'Tabla de datos'}</span>
+                  </label>
+                ))}
+              </div>
+
+              {/* Vista miniatura de hoja */}
+              <div style={{ flex: 1, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 4, position: 'relative' }}>
+                <div style={{ borderBottom: '1px solid #cbd5e1', paddingBottom: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 7, fontWeight: 800, color: '#1e293b' }}>📄 AgroMetric PDF Report</span>
+                  <span style={{ fontSize: 6, color: '#64748b' }}>2026-05-21</span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: 0.85 }}>
+                  <div style={{ height: 10, background: '#e2e8f0', borderRadius: 2, display: 'flex', alignItems: 'center', padding: '0 4px', opacity: printSim.info ? 1 : 0.15, transition: 'all 0.3s' }}>
+                    <div style={{ width: '40%', height: 4, background: '#475569', borderRadius: 1 }} />
+                  </div>
+                  <div style={{ height: 26, background: '#f1f5f9', borderRadius: 4, border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: printSim.chart ? 1 : 0.15, transition: 'all 0.3s' }}>
+                    <span style={{ fontSize: 7, color: '#475569', fontWeight: 700 }}>📈 Gráfico de Control</span>
+                  </div>
+                  <div style={{ height: 16, background: '#f8fafc', borderRadius: 4, border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 2, padding: 3, opacity: printSim.diagnostic ? 1 : 0.15, transition: 'all 0.3s' }}>
+                    <div style={{ width: '70%', height: 3, background: '#ef4444', borderRadius: 1 }} />
+                    <div style={{ width: '90%', height: 3, background: '#475569', borderRadius: 1 }} />
+                  </div>
+                  <div style={{ height: 14, background: '#f8fafc', borderRadius: 4, border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 2, padding: 3, opacity: printSim.table ? 1 : 0.15, transition: 'all 0.3s' }}>
+                    <div style={{ width: '100%', height: 3, background: '#cbd5e1', borderRadius: 1 }} />
+                    <div style={{ width: '100%', height: 3, background: '#cbd5e1', borderRadius: 1 }} />
+                  </div>
+                </div>
+
+                <div style={{ position: 'absolute', bottom: 4, right: 8, fontSize: 6, color: '#64748b' }}>Página 1 de 1</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AyudaPage() {
-  const [active, setActive] = useState('intro');
+  const [active, setActive] = useState('manual'); // Iniciar por defecto en el Manual Interactivo
   const section = sections.find(s => s.id === active);
 
   return (
@@ -611,30 +1243,36 @@ export default function AyudaPage() {
                 </div>
               </div>
 
-              {/* Contenido renderizado */}
+              {/* Contenido renderizado: Si es manual de inicio rápido, muestra el InteractiveTour */}
               <div style={{ lineHeight: 1.7 }}>
-                {renderMarkdown(section.content)}
-              </div>
-
-              {/* Navegación entre secciones */}
-              <div style={{ marginTop: 28, paddingTop: 16, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
-                {sections.findIndex(s => s.id === active) > 0 ? (
-                  <button className="btn btn-secondary"
-                    onClick={() => setActive(sections[sections.findIndex(s => s.id === active) - 1].id)}>
-                    ← Anterior
-                  </button>
-                ) : <div />}
-                {sections.findIndex(s => s.id === active) < sections.length - 1 ? (
-                  <button className="btn btn-primary"
-                    onClick={() => setActive(sections[sections.findIndex(s => s.id === active) + 1].id)}>
-                    Siguiente →
-                  </button>
+                {active === 'manual' ? (
+                  <InteractiveTour onComplete={() => setActive('intro')} />
                 ) : (
-                  <div className="interpretation good" style={{ padding: '8px 16px', fontSize: 13 }}>
-                    ✅ ¡Has completado la guía teórica!
-                  </div>
+                  renderMarkdown(section.content)
                 )}
               </div>
+
+              {/* Navegación entre secciones (sólo para la parte teórica común) */}
+              {active !== 'manual' && (
+                <div style={{ marginTop: 28, paddingTop: 16, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
+                  {sections.findIndex(s => s.id === active) > 0 ? (
+                    <button className="btn btn-secondary"
+                      onClick={() => setActive(sections[sections.findIndex(s => s.id === active) - 1].id)}>
+                      ← Anterior
+                    </button>
+                  ) : <div />}
+                  {sections.findIndex(s => s.id === active) < sections.length - 1 ? (
+                    <button className="btn btn-primary"
+                      onClick={() => setActive(sections[sections.findIndex(s => s.id === active) + 1].id)}>
+                      Siguiente →
+                    </button>
+                  ) : (
+                    <div className="interpretation good" style={{ padding: '8px 16px', fontSize: 13 }}>
+                      ✅ ¡Has completado la guía teórica!
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

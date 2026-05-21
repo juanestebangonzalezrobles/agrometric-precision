@@ -1,12 +1,10 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { calcCapability, aguacatePeso, aloeAltura } from '../../lib/data';
+import { calcCapability } from '../../lib/data';
+import { Printer, X } from 'lucide-react';
 
-const PRESETS = {
-  aguacate: { label: 'Aguacate — Peso (g)', ds: aguacatePeso },
-  aloe: { label: 'Aloe Vera — Altura (cm)', ds: aloeAltura },
-};
+const STORAGE_KEY = 'agrometric_registros';
 
 function normalCDF(z) {
   const t = 1 / (1 + 0.2316419 * Math.abs(z));
@@ -35,33 +33,96 @@ function interpCp(cp) {
 }
 
 export default function CapacidadPage() {
-  const [selected, setSelected] = useState('aguacate');
-  const [customMode, setCustomMode] = useState(false);
-  const [lse, setLse] = useState(aguacatePeso.lse);
-  const [lie, setLie] = useState(aguacatePeso.lie);
+  const [selected, setSelected] = useState('custom');
+  const [customMode, setCustomMode] = useState(true);
+  const [lse, setLse] = useState('');
+  const [lie, setLie] = useState('');
   const [customVals, setCustomVals] = useState('');
-  const [result, setResult] = useState(() => calcCapability(aguacatePeso.subgrupos, aguacatePeso.lse, aguacatePeso.lie));
-  const [curve, setCurve] = useState(() => buildDistCurve(
-    calcCapability(aguacatePeso.subgrupos, aguacatePeso.lse, aguacatePeso.lie).mean,
-    calcCapability(aguacatePeso.subgrupos, aguacatePeso.lse, aguacatePeso.lie).sigma,
-    aguacatePeso.lse, aguacatePeso.lie
-  ));
+  const [result, setResult] = useState(null);
+  const [curve, setCurve] = useState([]);
+  const [userRecords, setUserRecords] = useState([]);
 
-  const runPreset = (key) => {
-    const ds = PRESETS[key].ds;
-    setLse(ds.lse); setLie(ds.lie);
-    const r = calcCapability(ds.subgrupos, ds.lse, ds.lie);
-    setResult(r);
-    setCurve(buildDistCurve(r.mean, r.sigma, ds.lse, ds.lie));
-    setSelected(key); setCustomMode(false);
+  // Report print settings
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [printConfig, setPrintConfig] = useState({
+    indices: true,
+    stats: true,
+    diagnostic: true,
+    curve: true,
+  });
+
+  const handlePrint = () => {
+    setIsReportModalOpen(false);
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  };
+
+
+  // Load user records from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const records = raw ? JSON.parse(raw) : [];
+      const variables = records.filter(r => r.subgruposData && r.subgruposData.length > 0 && !r.isAtributo);
+      setUserRecords(variables);
+      if (variables.length > 0) {
+        const rec = variables[0];
+        setSelected('user_0');
+        setCustomMode(false);
+        const recLse = parseFloat(rec.lse) || 0;
+        const recLie = parseFloat(rec.lie) || 0;
+        setLse(recLse);
+        setLie(recLie);
+        if (recLse !== 0 || recLie !== 0) {
+          const r = calcCapability(rec.subgruposData, recLse, recLie);
+          setResult(r);
+          setCurve(buildDistCurve(r.mean, r.sigma, recLse, recLie));
+        }
+      }
+    } catch { setUserRecords([]); }
+  }, []);
+
+  const runUserRecord = (key) => {
+    const idx = parseInt(key.replace('user_', ''));
+    const rec = userRecords[idx];
+    if (!rec) return;
+    setSelected(key);
+    setCustomMode(false);
+    const recLse = parseFloat(rec.lse) || 0;
+    const recLie = parseFloat(rec.lie) || 0;
+    setLse(recLse);
+    setLie(recLie);
+    if (recLse !== 0 || recLie !== 0) {
+      const r = calcCapability(rec.subgruposData, recLse, recLie);
+      setResult(r);
+      setCurve(buildDistCurve(r.mean, r.sigma, recLse, recLie));
+    } else {
+      alert('Este registro no tiene LSE/LIE definidos. Ingrésalos manualmente y presiona Recalcular.');
+    }
   };
 
   const runCustom = () => {
     const vals = customVals.split(/[\n,;\t ]+/).map(parseFloat).filter(v => !isNaN(v));
     if (vals.length < 4) return alert('Ingrese al menos 4 valores');
-    const r = calcCapability([vals], lse, lie);
+    if (!lse || !lie) return alert('Ingrese LSE y LIE para calcular la capacidad.');
+    const r = calcCapability([vals], parseFloat(lse), parseFloat(lie));
     setResult(r);
-    setCurve(buildDistCurve(r.mean, r.sigma, lse, lie));
+    setCurve(buildDistCurve(r.mean, r.sigma, parseFloat(lse), parseFloat(lie)));
+  };
+
+  const recalculate = () => {
+    if (selected.startsWith('user_')) {
+      const idx = parseInt(selected.replace('user_', ''));
+      const rec = userRecords[idx];
+      if (!rec) return;
+      if (!lse || !lie) return alert('Ingrese LSE y LIE.');
+      const r = calcCapability(rec.subgruposData, parseFloat(lse), parseFloat(lie));
+      setResult(r);
+      setCurve(buildDistCurve(r.mean, r.sigma, parseFloat(lse), parseFloat(lie)));
+    } else {
+      runCustom();
+    }
   };
 
   const interpResult = result ? interpCp(result.Cp) : null;
@@ -73,11 +134,11 @@ export default function CapacidadPage() {
     <>
       <div className="header">
         <div>
-          <div className="header-title">Índices de Capacidad del Proceso</div>
-          <div className="header-subtitle">Cp, Cpk, Pp, Ppk — Potencial y Desempeño del proceso</div>
+          <div className="header-title">Análisis de Capacidad del Proceso</div>
+          <div className="header-subtitle">Cp · Cpk · Pp · Ppk · Nivel Sigma · Límites de Especificación</div>
         </div>
-        <button className="btn btn-secondary no-print" onClick={() => window.print()}>
-          Imprimir Reporte
+        <button className="btn btn-primary no-print" style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setIsReportModalOpen(true)}>
+          <Printer size={16} /> Generar Reporte PDF
         </button>
       </div>
       <div className="page-content fade-in">
@@ -86,13 +147,23 @@ export default function CapacidadPage() {
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="section-title" style={{ marginBottom: 12 }}>Seleccionar Datos y Especificaciones</div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-            {Object.entries(PRESETS).map(([k, v]) => (
-              <button key={k} className={`btn ${selected === k && !customMode ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => runPreset(k)}>{v.label}</button>
+            {userRecords.map((r, i) => (
+              <button key={`user_${i}`}
+                className={`btn ${selected === `user_${i}` ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ borderColor: 'var(--green-primary)', color: selected === `user_${i}` ? undefined : 'var(--green-light)' }}
+                onClick={() => runUserRecord(`user_${i}`)}
+              >
+                {r.producto} — {r.variableName || r.variable}
+              </button>
             ))}
             <button className={`btn ${customMode ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setCustomMode(true)}>Mis datos</button>
+              onClick={() => { setSelected('custom'); setCustomMode(true); setResult(null); }}>Mis datos</button>
           </div>
+          {userRecords.length === 0 && !customMode && (
+            <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
+              Guarda un registro de <strong>Variables</strong> en Muestras para analizarlo aquí.
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -106,7 +177,7 @@ export default function CapacidadPage() {
                 onChange={e => setLie(+e.target.value)} />
             </div>
             {!customMode && (
-              <button className="btn btn-secondary" onClick={() => runPreset(selected)}>Recalcular</button>
+              <button className="btn btn-secondary" onClick={recalculate}>Recalcular</button>
             )}
           </div>
 
@@ -123,7 +194,7 @@ export default function CapacidadPage() {
         {/* Índices principales */}
         {result && (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
+            <div className={`${!printConfig.indices ? 'no-print' : ''}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
               {[
                 { label: 'Cp (Potencial)', val: result.Cp, threshold: 1.33 },
                 { label: 'Cpk (Real)', val: result.Cpk, threshold: 1.33 },
@@ -147,7 +218,7 @@ export default function CapacidadPage() {
             </div>
 
             {/* Stats */}
-            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+            <div className={`${!printConfig.stats ? 'no-print' : ''}`} style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
               {[
                 { label: 'Media (X̄)', val: result.mean.toFixed(4) },
                 { label: 'Sigma (σ)', val: result.sigma.toFixed(4) },
@@ -172,7 +243,7 @@ export default function CapacidadPage() {
               const defColor = ppm > 66807 ? '#ef4444' : ppm > 6210 ? '#f59e0b' : 'var(--green-light)';
 
               return (
-                <div className="card" style={{ border: '1px solid var(--green-primary)', borderLeft: '4px solid var(--green-primary)', marginBottom: 16 }}>
+                <div className={`card ${!printConfig.diagnostic ? 'no-print' : ''}`} style={{ border: '1px solid var(--green-primary)', borderLeft: '4px solid var(--green-primary)', marginBottom: 16 }}>
                   <div className="section-title" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                     Diagnóstico Técnico — Capacidad del Proceso
                     <span className={`badge ${cpkOk ? 'badge-green' : result.Cpk >= 1 ? 'badge-yellow' : 'badge-red'}`} style={{ fontSize: 11 }}>
@@ -277,7 +348,7 @@ export default function CapacidadPage() {
               const domainCurveX = [+(curveMinX).toFixed(3), +(curveMaxX).toFixed(3)];
 
               return (
-                <div className="chart-wrapper">
+                <div className={`chart-wrapper ${!printConfig.curve ? 'no-print' : ''}`}>
                   <div className="chart-title">Distribución del Proceso vs. Especificaciones</div>
                   <div className="chart-desc">Área verde = dentro de especificación · Líneas rojas = LSE y LIE</div>
                   <ResponsiveContainer width="100%" height={280}>
@@ -304,6 +375,62 @@ export default function CapacidadPage() {
           </>
         )}
       </div>
+
+      {/* REPORT CONFIGURATION MODAL */}
+      {isReportModalOpen && (
+        <div className="modal-overlay" style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          padding: 20
+        }}>
+          <div className="card modal-content" style={{
+            width: '100%', maxWidth: '480px', border: '1px solid var(--border)', background: 'var(--bg-card)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--green-light)', margin: 0 }}>
+                📋 Configurar Reporte de Capacidad
+              </h3>
+              <button className="btn btn-secondary" style={{ padding: '6px', borderRadius: '50%' }} onClick={() => setIsReportModalOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
+              Seleccione qué secciones del análisis desea incluir en el reporte imprimible.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+              {[
+                { key: 'indices', title: 'Índices de Capacidad', desc: 'KPIs Cp, Cpk, Pp y Ppk con nivel de suficiencia.' },
+                { key: 'stats', title: 'Estadísticos Generales y PPM', desc: 'Media, desviación estándar, límites y partes por millón estimadas.' },
+                { key: 'diagnostic', title: 'Diagnóstico y Recomendaciones', desc: 'Análisis explicativo sobre el centrado, sigma y propuestas Kaizen.' },
+                { key: 'curve', title: 'Gráfico de Distribución del Proceso', desc: 'Curva normal con áreas rellenas frente a las especificaciones.' },
+              ].map(opt => (
+                <label key={opt.key} style={{
+                  display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 10px',
+                  background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
+                  borderRadius: 6, cursor: 'pointer', transition: 'all 0.2s'
+                }} className="hover-bg-card-hover">
+                  <input type="checkbox" checked={printConfig[opt.key]} style={{ marginTop: 3, accentColor: 'var(--green-primary)' }}
+                    onChange={e => setPrintConfig(c => ({ ...c, [opt.key]: e.target.checked }))} />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{opt.title}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>{opt.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => setIsReportModalOpen(false)}>
+                Cancelar
+              </button>
+              <button className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={handlePrint}>
+                <Printer size={14} /> Imprimir / PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

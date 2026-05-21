@@ -4,24 +4,10 @@ import {
   ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Line, ScatterChart, Scatter, ReferenceLine
 } from 'recharts';
-import { normalityTest, histogram, optimizeBoxCox, aguacatePeso, aloeAltura } from '../../lib/data';
+import { normalityTest, histogram, optimizeBoxCox } from '../../lib/data';
+import { Printer, X } from 'lucide-react';
 
-const PRESETS = {
-  aguacate: {
-    label: 'Aguacate — Peso (g)',
-    values: aguacatePeso.subgrupos.flat(),
-    producto: 'Aguacate Hass',
-    variable: 'Peso',
-    unidad: 'g',
-  },
-  aloe: {
-    label: 'Aloe Vera — Altura (cm)',
-    values: aloeAltura.subgrupos.flat(),
-    producto: 'Aloe Vera',
-    variable: 'Altura',
-    unidad: 'cm',
-  },
-};
+const STORAGE_KEY = 'agrometric_registros';
 
 function normalPDF(x, mean, sigma) {
   return Math.exp(-0.5 * ((x - mean) / sigma) ** 2) / (sigma * Math.sqrt(2 * Math.PI));
@@ -37,8 +23,8 @@ function inverseNormalCDF(p) {
 }
 
 export default function NormalidadClient() {
-  const [selected, setSelected] = useState('aguacate');
-  const [customMode, setCustomMode] = useState(false);
+  const [selected, setSelected] = useState('custom');
+  const [customMode, setCustomMode] = useState(true);
   const [customInput, setCustomInput] = useState('');
   const [result, setResult] = useState(null);
   const [histData, setHistData] = useState([]);
@@ -47,6 +33,40 @@ export default function NormalidadClient() {
   const [isBoxCoxApplied, setIsBoxCoxApplied] = useState(false);
   const [optLambda, setOptLambda] = useState(1.0);
   const [error, setError] = useState(null);
+  const [userRecords, setUserRecords] = useState([]);
+
+  // Report print settings
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [printConfig, setPrintConfig] = useState({
+    descriptive: true,
+    diagnostic: true,
+    histogram: true,
+    qqplot: true,
+  });
+
+  const handlePrint = () => {
+    setIsReportModalOpen(false);
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  };
+
+
+  // Load user records from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const records = raw ? JSON.parse(raw) : [];
+      const variables = records.filter(r => r.subgruposData && r.subgruposData.length > 0 && !r.isAtributo);
+      setUserRecords(variables);
+      if (variables.length > 0) {
+        setSelected('user_0');
+        setCustomMode(false);
+        const vals = variables[0].subgruposData.flat().map(v => parseFloat(v)).filter(v => !isNaN(v));
+        if (vals.length >= 4) runAnalysis(vals);
+      }
+    } catch { setUserRecords([]); }
+  }, []);
 
   const runAnalysis = (values, applyBoxCox = false) => {
     try {
@@ -99,14 +119,20 @@ export default function NormalidadClient() {
     }
   };
 
-  useEffect(() => {
-    runAnalysis(PRESETS.aguacate.values);
-  }, []);
-
-  const handlePreset = (key) => {
+  const handleSelectUser = (key) => {
     setSelected(key);
     setCustomMode(false);
-    runAnalysis(PRESETS[key].values);
+    if (key === 'custom') {
+      setCustomMode(true);
+      return;
+    }
+    const idx = parseInt(key.replace('user_', ''));
+    const rec = userRecords[idx];
+    if (rec && rec.subgruposData) {
+      const vals = rec.subgruposData.flat().map(v => parseFloat(v)).filter(v => !isNaN(v));
+      if (vals.length >= 4) runAnalysis(vals);
+      else alert('Este registro no tiene suficientes datos para analizar (mínimo 4 valores).');
+    }
   };
 
   const handleCustom = () => {
@@ -127,7 +153,7 @@ export default function NormalidadClient() {
         <div className="page-content fade-in">
           <div className="card" style={{ border: '1px solid #ef4444', padding: 20 }}>
             <h3 style={{ color: '#ef4444' }}>Error: {error}</h3>
-            <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => { setError(null); runAnalysis(PRESETS.aguacate.values); }}>Reintentar</button>
+            <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => { setError(null); setResult(null); }}>Reintentar</button>
           </div>
         </div>
       </>
@@ -152,18 +178,29 @@ export default function NormalidadClient() {
           <div className="header-title">Prueba de Normalidad</div>
           <div className="header-subtitle">Anderson‑Darling · Histograma · Q‑Q Plot · Estadísticos Descriptivos</div>
         </div>
-        <button className="btn btn-secondary no-print" onClick={() => window.print()}>Imprimir Reporte</button>
+        <button className="btn btn-primary no-print" style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setIsReportModalOpen(true)}>
+          <Printer size={16} /> Generar Reporte PDF
+        </button>
       </div>
       <div className="page-content fade-in">
         {/* Selector */}
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="section-title" style={{ marginBottom: 12 }}>Seleccionar Datos</div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {Object.entries(PRESETS).map(([k, v]) => (
-              <button key={k} className={`btn ${selected === k && !customMode ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handlePreset(k)}>{v.label}</button>
+            {userRecords.map((r, i) => (
+              <button key={`user_${i}`} className={`btn ${selected === `user_${i}` ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ borderColor: 'var(--green-primary)', color: selected === `user_${i}` ? undefined : 'var(--green-light)' }}
+                onClick={() => handleSelectUser(`user_${i}`)}>
+                {r.producto} — {r.variableName || r.variable}
+              </button>
             ))}
-            <button className={`btn ${customMode ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setCustomMode(true)}>Mis datos</button>
+            <button className={`btn ${customMode ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleSelectUser('custom')}>Mis datos (manual)</button>
           </div>
+          {userRecords.length === 0 && !customMode && (
+            <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
+              Guarda un registro de <strong>Variables</strong> en Muestras para analizarlo aquí.
+            </div>
+          )}
           {customMode && (
             <div style={{ marginTop: 16 }}>
               <label className="form-label">Ingrese los datos (separados por coma, espacio, punto y coma o Enter)</label>
@@ -183,7 +220,7 @@ export default function NormalidadClient() {
 
         {/* Estadísticos descriptivos */}
         {result && (
-          <div className="grid-3" style={{ marginBottom: 16 }}>
+          <div className={`grid-3 ${!printConfig.descriptive ? 'no-print' : ''}`} style={{ marginBottom: 16 }}>
             {[
               { label: 'N (Datos)', val: result.n },
               { label: 'Media (X̄)', val: result.mean.toFixed(4) },
@@ -210,7 +247,7 @@ export default function NormalidadClient() {
           const skewOk = Math.abs(result.skew) < 1;
           const kurtOk = Math.abs(result.kurt) < 1;
           return (
-            <div className="card" style={{ border: '1px solid var(--green-primary)', borderLeft: `4px solid ${result.normal ? 'var(--green-primary)' : '#f59e0b'}`, marginBottom: 16 }}>
+            <div className={`card ${!printConfig.diagnostic ? 'no-print' : ''}`} style={{ border: '1px solid var(--green-primary)', borderLeft: `4px solid ${result.normal ? 'var(--green-primary)' : '#f59e0b'}`, marginBottom: 16 }}>
               <div className="section-title" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                 Diagnóstico Técnico — {result.isBoxCoxApplied ? `Datos Transformados (Box‑Cox, λ = ${result.optLambda.toFixed(1)})` : 'Prueba de Normalidad'}
                 <span className={`badge ${result.normal ? 'badge-green' : 'badge-yellow'}`} style={{ fontSize: 11 }}>{result.normal ? 'Distribución Normal' : 'No Normal'}</span>
@@ -270,7 +307,7 @@ export default function NormalidadClient() {
 
         {/* Histograma */}
         {histData.length > 0 && (
-          <div className="chart-wrapper">
+          <div className={`chart-wrapper ${!printConfig.histogram ? 'no-print' : ''}`}>
             <div className="chart-title">Histograma con Curva Normal Superpuesta</div>
             <div className="chart-desc">Barras = frecuencia observada · Línea naranja = frecuencia teórica normal</div>
             <ResponsiveContainer width="100%" height={280}>
@@ -288,7 +325,7 @@ export default function NormalidadClient() {
 
         {/* Q‑Q Plot */}
         {qqData.length > 0 && (
-          <div className="chart-wrapper">
+          <div className={`chart-wrapper ${!printConfig.qqplot ? 'no-print' : ''}`}>
             <div className="chart-title">Q‑Q Plot (Gráfico de Probabilidad Normal)</div>
             <div className="chart-desc">Si los puntos se alinean sobre la diagonal, los datos son normales</div>
             <ResponsiveContainer width="100%" height={280}>
@@ -304,6 +341,62 @@ export default function NormalidadClient() {
           </div>
         )}
       </div>
+
+      {/* REPORT CONFIGURATION MODAL */}
+      {isReportModalOpen && (
+        <div className="modal-overlay" style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          padding: 20
+        }}>
+          <div className="card modal-content" style={{
+            width: '100%', maxWidth: '480px', border: '1px solid var(--border)', background: 'var(--bg-card)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--green-light)', margin: 0 }}>
+                📋 Configurar Reporte de Normalidad
+              </h3>
+              <button className="btn btn-secondary" style={{ padding: '6px', borderRadius: '50%' }} onClick={() => setIsReportModalOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
+              Seleccione qué secciones del análisis desea incluir en el reporte imprimible.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+              {[
+                { key: 'descriptive', title: 'Estadísticos Descriptivos', desc: 'Ficha con media, desviación estándar, asimetría y curtosis.' },
+                { key: 'diagnostic', title: 'Diagnóstico de Normalidad', desc: 'Interpretación de la prueba Anderson-Darling e implicaciones.' },
+                { key: 'histogram', title: 'Histograma con Curva Normal', desc: 'Gráfico con la comparación de frecuencias observadas y teóricas.' },
+                { key: 'qqplot', title: 'Q-Q Plot (Probabilidad Normal)', desc: 'Gráfico de dispersión frente a la diagonal teórica.' },
+              ].map(opt => (
+                <label key={opt.key} style={{
+                  display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 10px',
+                  background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
+                  borderRadius: 6, cursor: 'pointer', transition: 'all 0.2s'
+                }} className="hover-bg-card-hover">
+                  <input type="checkbox" checked={printConfig[opt.key]} style={{ marginTop: 3, accentColor: 'var(--green-primary)' }}
+                    onChange={e => setPrintConfig(c => ({ ...c, [opt.key]: e.target.checked }))} />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{opt.title}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>{opt.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => setIsReportModalOpen(false)}>
+                Cancelar
+              </button>
+              <button className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={handlePrint}>
+                <Printer size={14} /> Imprimir / PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

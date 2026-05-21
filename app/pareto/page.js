@@ -2,47 +2,6 @@
 import { useState } from 'react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
 
-const PRESETS = {
-  manzanilla: {
-    label: 'Manzanilla — Defectos',
-    producto: 'Manzanilla Alemana',
-    defectos: [
-      { tipo: 'Flores manchadas', count: 45 },
-      { tipo: 'Tamaño irregular', count: 32 },
-      { tipo: 'Color inadecuado', count: 28 },
-      { tipo: 'Daño mecánico', count: 18 },
-      { tipo: 'Hongos / Pudrición', count: 12 },
-      { tipo: 'Pétalos caídos', count: 8 },
-      { tipo: 'Otros', count: 5 },
-    ],
-  },
-  aguacate: {
-    label: 'Aguacate — Causas de rechazo',
-    producto: 'Aguacate Hass',
-    defectos: [
-      { tipo: 'Peso fuera de especificación', count: 38 },
-      { tipo: 'Manchas en piel', count: 29 },
-      { tipo: 'Maduración prematura', count: 22 },
-      { tipo: 'Daño físico', count: 14 },
-      { tipo: 'Firmeza inadecuada', count: 9 },
-      { tipo: 'Otros', count: 4 },
-    ],
-  },
-  tomate: {
-    label: 'Tomate — Defectos',
-    producto: 'Tomate Chonto',
-    defectos: [
-      { tipo: 'Manchas / Lesiones', count: 52 },
-      { tipo: 'Pudrición apical', count: 34 },
-      { tipo: 'Deformación', count: 21 },
-      { tipo: 'Agrietamiento', count: 17 },
-      { tipo: 'Plagas', count: 10 },
-      { tipo: 'Color inadecuado', count: 7 },
-      { tipo: 'Otros', count: 3 },
-    ],
-  },
-};
-
 function buildPareto(defectos) {
   const total = defectos.reduce((a, d) => a + d.count, 0);
   const sorted = [...defectos].sort((a, b) => b.count - a.count);
@@ -60,17 +19,11 @@ const CustomBar = (props) => {
 };
 
 export default function ParetoPage() {
-  const [selected, setSelected] = useState('manzanilla');
-  const [customMode, setCustomMode] = useState(false);
+  const [selected, setSelected] = useState('custom');
+  const [customMode, setCustomMode] = useState(true);
   const [customRows, setCustomRows] = useState([{ tipo: '', count: '' }]);
-  const [data, setData] = useState(() => buildPareto(PRESETS.manzanilla.defectos));
-  const [producto, setProducto] = useState('Manzanilla Alemana');
-
-  const handlePreset = (key) => {
-    setSelected(key); setCustomMode(false);
-    setData(buildPareto(PRESETS[key].defectos));
-    setProducto(PRESETS[key].producto);
-  };
+  const [data, setData] = useState([]);
+  const [producto, setProducto] = useState('');
 
   const handleCustom = () => {
     const rows = customRows.filter(r => r.tipo && !isNaN(+r.count) && +r.count > 0);
@@ -97,18 +50,15 @@ export default function ParetoPage() {
 
         {/* Selector */}
         <div className="card" style={{ marginBottom: 16 }}>
-          <div className="section-title" style={{ marginBottom: 12 }}>Seleccionar Producto</div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {Object.entries(PRESETS).map(([k, v]) => (
-              <button key={k} className={`btn ${selected === k && !customMode ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => handlePreset(k)}>{v.label}</button>
-            ))}
-            <button className={`btn ${customMode ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setCustomMode(true)}>Mis datos</button>
+          <div className="section-title" style={{ marginBottom: 12 }}>Ingresar Datos de Defectos</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Nombre del Producto / Proceso</label>
+              <input type="text" className="form-input" style={{ width: 300 }} value={producto} onChange={e => setProducto(e.target.value)} placeholder="Ej: Manzanilla Alemana" />
+            </div>
           </div>
         </div>
 
-        {customMode && (
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="section-title" style={{ marginBottom: 12 }}>Ingresar Datos de Defectos</div>
             <div className="table-container data-table-input" style={{ marginBottom: 12 }}>
@@ -133,7 +83,6 @@ export default function ParetoPage() {
               <button className="btn btn-primary" onClick={handleCustom}>Generar Pareto</button>
             </div>
           </div>
-        )}
 
         {/* KPIs Pareto */}
         <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>

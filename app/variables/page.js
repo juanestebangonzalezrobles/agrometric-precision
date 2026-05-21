@@ -38,11 +38,11 @@ const CustomDot = (props) => {
 };
 
 export default function VariablesPage() {
-  const [selected, setSelected] = useState('aguacate');
+  const [selected, setSelected] = useState('custom');
   const [customData, setCustomData] = useState({ n: 5, rows: 25, values: [] });
   const [chartType, setChartType] = useState('XR'); // 'XR' (Rangos) o 'XS' (Desviación)
   const [result, setResult] = useState(null);
-  const [dataset, setDataset] = useState(aguacatePeso);
+  const [dataset, setDataset] = useState(null);
   const [userRecords, setUserRecords] = useState([]);
   
   // State for Customizable Report PDF Builder
@@ -59,7 +59,11 @@ export default function VariablesPage() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       const records = raw ? JSON.parse(raw) : [];
-      setUserRecords(records.filter(r => r.subgruposData && r.subgruposData.length > 0 && !r.isAtributo));
+      const variables = records.filter(r => r.subgruposData && r.subgruposData.length > 0 && !r.isAtributo);
+      setUserRecords(variables);
+      if (variables.length > 0) {
+        setSelected('user_0');
+      }
     } catch { setUserRecords([]); }
   }, []);
 
@@ -107,12 +111,8 @@ export default function VariablesPage() {
   }
 
   useEffect(() => {
-    if (selected !== 'custom' && !selected.startsWith('user_')) {
-      const ds = selected === 'aguacate' ? aguacatePeso : aloeAltura;
-      setDataset(ds);
-      const isXS = chartType === 'XS';
-      const r = computeChartResults(ds.subgrupos, isXS);
-      setResult(r);
+    if (selected === 'custom') {
+      handleCustomCalc();
     } else if (selected.startsWith('user_')) {
       const idx = parseInt(selected.replace('user_', ''));
       const rec = userRecords[idx];
@@ -151,32 +151,31 @@ export default function VariablesPage() {
     }
   }, [chartType]);
 
-  const handleManualInput = (sgIdx, valIdx, val) => {
-    const next = [...(customData.values.length ? customData.values : Array.from({ length: customData.rows }, () => Array(customData.n).fill('')))];
-    if (!next[sgIdx]) next[sgIdx] = Array(customData.n).fill('');
-    next[sgIdx][valIdx] = parseFloat(val) || '';
-    setCustomData(d => ({ ...d, values: next }));
+  const handleManualInput = (row, col, val) => {
+    const newVal = [...customData.values];
+    if (!newVal[row]) newVal[row] = [];
+    newVal[row][col] = val;
+    setCustomData({ ...customData, values: newVal });
   };
 
   const handlePrint = () => {
     setIsReportModalOpen(false);
-    // Give state transitions a micro-moment to clean visual overlay, then open print dialog
     setTimeout(() => {
       window.print();
     }, 150);
   };
 
-  // Determine overall status count (Nelson alerts + classic OOCs)
   const nelsonViolationsCount = result?.nelsonDiagnostic?.totalViolations || 0;
-  const oocRCount = result ? result.chartData.filter(d => d.ooc_r).length : 0;
-  const totalAlerts = nelsonViolationsCount + oocRCount;
+  const classicOocCountX = result ? result.chartData.filter(d => d.ooc_x).length : 0;
+  const classicOocCountR = result ? result.chartData.filter(d => d.ooc_r).length : 0;
+  const totalAlerts = nelsonViolationsCount + Math.max(classicOocCountX, classicOocCountR);
 
   return (
     <>
       <div className="header no-print">
         <div>
           <div className="header-title">Control de Variables — Gráficos X̄-R / X̄-S</div>
-          <div className="header-subtitle">Variables continuas con análisis estadístico Nelson Rules integrado</div>
+          <div className="header-subtitle">Análisis avanzado de estabilidad y capacidad con diagnóstico automático Nelson Rules</div>
         </div>
         <button className="btn btn-primary" onClick={() => setIsReportModalOpen(true)}>
           <Printer size={16} /> Generar Reporte PDF
@@ -204,8 +203,6 @@ export default function VariablesPage() {
           <div className="section-title" style={{ marginBottom: 12 }}>Seleccionar Conjunto de Datos</div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {[
-              { key: 'aguacate', label: 'Aguacate Hass — Peso (g)' },
-              { key: 'aloe', label: 'Aloe Vera — Altura (cm)' },
               ...userRecords.map((r, i) => ({ key: `user_${i}`, label: `${r.producto} — ${r.variableName || r.variable}`, user: true })),
               { key: 'custom', label: 'Ingresar mis datos' },
             ].map(opt => (
@@ -213,7 +210,6 @@ export default function VariablesPage() {
                 onClick={() => setSelected(opt.key)}
                 style={opt.user ? { borderColor: 'var(--green-primary)', color: selected === opt.key ? undefined : 'var(--green-light)' } : {}}>
                 {opt.label}
-                {opt.user && <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.7 }}>TUYO</span>}
               </button>
             ))}
           </div>

@@ -145,8 +145,15 @@ export default function MuestrasPage() {
 
   // Añadir un nuevo subgrupo en blanco
   const handleAddSubgrupo = () => {
-    const tam = editingRecord.tam;
-    const next = [...editMatrix, Array(tam).fill(0)];
+    const isAtributo = editingRecord?.isAtributo;
+    let newRow;
+    if (isAtributo) {
+      newRow = editingRecord?.tipoGrafico === 'p' ? { n: 100, np: 0 } : { c: 0 };
+    } else {
+      const tam = parseInt(editingRecord?.tam) || 5;
+      newRow = Array(tam).fill(0);
+    }
+    const next = [...editMatrix, newRow];
     setEditMatrix(next);
   };
 
@@ -543,21 +550,18 @@ export default function MuestrasPage() {
               <div style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <div style={{ fontSize: 13, fontWeight: 700 }}>Valores Registrados ({editMatrix.length} subgrupos):</div>
-                  {!editingRecord.isAtributo && (
-                    <button className="btn btn-secondary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={handleAddSubgrupo}>
-                      <Plus size={12} /> Agregar Subgrupo
-                    </button>
-                  )}
+                  <button className="btn btn-secondary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={handleAddSubgrupo}>
+                    <Plus size={12} /> Agregar Subgrupo
+                  </button>
                 </div>
 
                 <div className="table-container" style={{ maxHeight: '280px', overflowY: 'auto' }}>
                   {editingRecord.isAtributo ? (
-                    /* Tabla para datos de Atributos (p, c) */
-                    <table>
+                        <table>
                       <thead>
                         <tr>
                           <th>Subgrupo</th>
-                          <th>Tamaño de muestra (n)</th>
+                          {editingRecord.tipoGrafico === 'p' && <th>Tamaño de muestra (n)</th>}
                           <th>{editingRecord.tipoGrafico === 'p' ? 'Defectuosos (np)' : 'Defectos (c)'}</th>
                           <th>Acciones</th>
                         </tr>
@@ -566,16 +570,18 @@ export default function MuestrasPage() {
                         {editMatrix.map((item, ri) => (
                           <tr key={ri}>
                             <td style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{ri + 1}</td>
+                            {editingRecord.tipoGrafico === 'p' && (
+                              <td>
+                                <input type="number" className="table-input" value={item.n ?? ''}
+                                  onChange={e => {
+                                    const next = [...editMatrix];
+                                    next[ri].n = parseInt(e.target.value) || 1;
+                                    setEditMatrix(next);
+                                  }} />
+                              </td>
+                            )}
                             <td>
-                              <input type="number" className="table-input" value={item.n}
-                                onChange={e => {
-                                  const next = [...editMatrix];
-                                  next[ri].n = parseInt(e.target.value) || 1;
-                                  setEditMatrix(next);
-                                }} />
-                            </td>
-                            <td>
-                              <input type="number" className="table-input" value={editingRecord.tipoGrafico === 'p' ? item.np : item.c}
+                              <input type="number" className="table-input" value={(editingRecord.tipoGrafico === 'p' ? item.np : item.c) ?? ''}
                                 onChange={e => {
                                   const next = [...editMatrix];
                                   if (editingRecord.tipoGrafico === 'p') {
