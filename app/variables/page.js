@@ -167,6 +167,17 @@ export default function VariablesPage() {
       saveSafeRecords(loaded); // Reescribir de inmediato para limpiar localStorage
       const variables = loaded.filter(r => !r.isAtributo);
       setUserRecords(variables);
+
+      const selectedId = localStorage.getItem('agrometric_selected_id');
+      if (selectedId) {
+        const foundIndex = variables.findIndex(r => r.id === selectedId);
+        if (foundIndex !== -1) {
+          setSelected(`user_${foundIndex}`);
+          localStorage.removeItem('agrometric_selected_id');
+          return;
+        }
+      }
+
       if (variables.length > 0) {
         setSelected('user_0');
       }

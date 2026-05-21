@@ -172,6 +172,28 @@ export default function CapacidadPage() {
       saveSafeRecords(loaded); // Reescribir de inmediato para limpiar localStorage
       const variables = loaded.filter(r => !r.isAtributo);
       setUserRecords(variables);
+
+      const selectedId = localStorage.getItem('agrometric_selected_id');
+      if (selectedId) {
+        const foundIndex = variables.findIndex(r => r.id === selectedId);
+        if (foundIndex !== -1) {
+          const rec = variables[foundIndex];
+          setSelected(`user_${foundIndex}`);
+          setCustomMode(false);
+          const recLse = parseFloat(rec.lse) || 0;
+          const recLie = parseFloat(rec.lie) || 0;
+          setLse(recLse);
+          setLie(recLie);
+          if (recLse !== 0 || recLie !== 0) {
+            const r = calcCapability(rec.subgruposData, recLse, recLie);
+            setResult(r);
+            setCurve(buildDistCurve(r.mean, r.sigma, recLse, recLie));
+          }
+          localStorage.removeItem('agrometric_selected_id');
+          return;
+        }
+      }
+
       if (variables.length > 0) {
         const rec = variables[0];
         setSelected('user_0');

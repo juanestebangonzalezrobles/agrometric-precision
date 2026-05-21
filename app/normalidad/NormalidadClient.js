@@ -163,6 +163,21 @@ export default function NormalidadClient() {
       saveSafeRecords(loaded); // Reescribir de inmediato para limpiar localStorage
       const variables = loaded.filter(r => !r.isAtributo);
       setUserRecords(variables);
+
+      const selectedId = localStorage.getItem('agrometric_selected_id');
+      if (selectedId) {
+        const foundIndex = variables.findIndex(r => r.id === selectedId);
+        if (foundIndex !== -1) {
+          setSelected(`user_${foundIndex}`);
+          setCustomMode(false);
+          const rec = variables[foundIndex];
+          const vals = rec.subgruposData.flat().map(v => parseFloat(v)).filter(v => !isNaN(v));
+          if (vals.length >= 4) runAnalysis(vals);
+          localStorage.removeItem('agrometric_selected_id');
+          return;
+        }
+      }
+
       if (variables.length > 0 && variables[0]?.subgruposData) {
         setSelected('user_0');
         setCustomMode(false);

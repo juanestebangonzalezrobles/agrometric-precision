@@ -206,6 +206,18 @@ export default function AtributosPage() {
       saveSafeRecords(loaded); // Reescribir de inmediato para limpiar localStorage
       const attrRecords = loaded.filter(r => !!r.isAtributo);
       setUserRecords(attrRecords);
+
+      const selectedId = localStorage.getItem('agrometric_selected_id');
+      if (selectedId) {
+        const foundIndex = attrRecords.findIndex(r => r.id === selectedId);
+        if (foundIndex !== -1) {
+          setPreset(`user_${foundIndex}`);
+          setCustomMode(false);
+          localStorage.removeItem('agrometric_selected_id');
+          return;
+        }
+      }
+
       if (attrRecords.length > 0) {
         setPreset('user_0');
         setCustomMode(false);
