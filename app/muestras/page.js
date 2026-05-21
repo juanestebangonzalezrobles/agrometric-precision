@@ -51,7 +51,11 @@ export default function MuestrasPage() {
   }, []);
 
   const initMatrix = () => {
-    const rows = Array.from({ length: +form.nSubgrupos }, () => Array(+form.tamSubgrupo).fill(''));
+    let cols = +form.tamSubgrupo;
+    if (form.isAtributo) {
+      cols = form.tipoGrafico === 'p' ? 2 : 1;
+    }
+    const rows = Array.from({ length: +form.nSubgrupos }, () => Array(cols).fill(''));
     setMatrixData(rows);
     setStep(2);
   };
@@ -62,7 +66,20 @@ export default function MuestrasPage() {
   };
 
   const handleSaveNew = () => {
-    const subgruposNums = matrixData.map(row => row.map(v => parseFloat(v) || 0));
+    let subgruposData;
+    
+    if (form.isAtributo) {
+      subgruposData = matrixData.map(row => {
+        if (form.tipoGrafico === 'p') {
+          return { n: parseFloat(row[0]) || 0, np: parseFloat(row[1]) || 0 };
+        } else {
+          return { c: parseFloat(row[0]) || 0 };
+        }
+      });
+    } else {
+      subgruposData = matrixData.map(row => row.map(v => parseFloat(v) || 0));
+    }
+
     const newRecord = {
       id: `user_${Date.now()}`,
       producto: form.producto,
@@ -72,16 +89,17 @@ export default function MuestrasPage() {
       variableName: form.variable,
       analista: form.analista,
       fecha: form.fecha || new Date().toISOString().slice(0, 10),
-      subgrupos: subgruposNums.length,
-      tam: subgruposNums[0]?.length || 0,
+      subgrupos: subgruposData.length,
+      tam: form.isAtributo ? '-' : (subgruposData[0]?.length || 0),
       lse: form.lse || '-',
       lie: form.lie || '-',
       lseNum: parseFloat(form.lse) || null,
       lieNum: parseFloat(form.lie) || null,
       estado: 'Analizado',
-      subgruposData: subgruposNums,
+      subgruposData: subgruposData,
       notas: form.notas,
-      isAtributo: false,
+      isAtributo: form.isAtributo || false,
+      tipoGrafico: form.tipoGrafico || 'p',
       isDemo: false
     };
 
@@ -204,7 +222,7 @@ export default function MuestrasPage() {
                     Vaciar Base de Datos
                   </button>
                 )}
-                <button className="btn btn-primary btn-sm" onClick={() => setActiveTab('nuevo')}>+ Nuevo Registro</button>
+                <button className="btn btn-primary btn-sm" onClick={() => { setActiveTab('nuevo'); setStep(1); setSaved(false); setForm({ producto: '', tipo: 'Fruta', variable: '', unidad: '', analista: '', fecha: '', lse: '', lie: '', nSubgrupos: 10, tamSubgrupo: 5, notas: '', isAtributo: false, tipoGrafico: 'p' }); }}>+ Nuevo Registro</button>
               </div>
             </div>
             <div className="table-container">
@@ -215,7 +233,7 @@ export default function MuestrasPage() {
                   <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 auto 16px auto', maxWidth: 400, lineHeight: 1.5 }}>
                     El sistema está listo para operar con tus propios muestreos. Agrega un nuevo registro manualmente para comenzar a realizar análisis de estabilidad, normalidad y capacidad.
                   </p>
-                  <button className="btn btn-primary btn-sm" onClick={() => setActiveTab('nuevo')}>
+                  <button className="btn btn-primary btn-sm" onClick={() => { setActiveTab('nuevo'); setStep(1); setSaved(false); setForm({ producto: '', tipo: 'Fruta', variable: '', unidad: '', analista: '', fecha: '', lse: '', lie: '', nSubgrupos: 10, tamSubgrupo: 5, notas: '', isAtributo: false, tipoGrafico: 'p' }); }}>
                     + Registrar Primera Muestra
                   </button>
                 </div>
@@ -238,7 +256,7 @@ export default function MuestrasPage() {
                         <td><span className="badge badge-secondary" style={{ fontSize: 10 }}>{m.tipo}</span></td>
                         <td>
                           {m.variable} 
-                          {m.isAtributo && <span style={{ fontSize: 9, background: 'var(--border)', color: 'var(--text-muted)', marginLeft: 6, padding: '2px 4px', borderRadius: 4 }}>ATRIBUTO ({m.tipoGrafico.toUpperCase()})</span>}
+                          {m.isAtributo && <span style={{ fontSize: 9, background: 'var(--border)', color: 'var(--text-muted)', marginLeft: 6, padding: '2px 4px', borderRadius: 4 }}>ATRIBUTO ({m.tipoGrafico?.toUpperCase()})</span>}
                         </td>
                         <td>{m.analista}</td>
                         <td className="td-num" style={{ fontSize: 12 }}>{m.fecha}</td>
@@ -289,25 +307,39 @@ export default function MuestrasPage() {
 
             {step === 1 && (
               <div className="card">
-                <div className="section-title" style={{ marginBottom: 16 }}>Nueva Muestra de Variables</div>
+                <div className="section-title" style={{ marginBottom: 16 }}>Nueva Muestra de Datos</div>
                 <div className="grid-2">
+                  <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                    <label className="form-label">Tipo de Análisis *</label>
+                    <select className="form-select" value={form.isAtributo ? (form.tipoGrafico === 'c' ? 'atributo_c' : 'atributo_p') : 'variable'} 
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (val === 'variable') setForm(f => ({ ...f, isAtributo: false, tipoGrafico: 'p' }));
+                        else if (val === 'atributo_p') setForm(f => ({ ...f, isAtributo: true, tipoGrafico: 'p' }));
+                        else if (val === 'atributo_c') setForm(f => ({ ...f, isAtributo: true, tipoGrafico: 'c' }));
+                      }}>
+                      <option value="variable">Control de Variables (X̄-R / X̄-S)</option>
+                      <option value="atributo_p">Control de Atributos - Gráfico P (Proporción de defectuosos)</option>
+                      <option value="atributo_c">Control de Atributos - Gráfico C (Número de defectos)</option>
+                    </select>
+                  </div>
                   <div className="form-group">
                     <label className="form-label">Nombre del Producto *</label>
                     <input className="form-input" value={form.producto} onChange={e => setForm(f => ({ ...f, producto: e.target.value }))} placeholder="Ej: Aguacate Hass" />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Tipo de Producto</label>
+                    <label className="form-label">Categoría del Producto</label>
                     <select className="form-select" value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}>
                       <option>Fruta</option><option>Hortaliza</option><option>Planta Medicinal</option>
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Variable a Controlar *</label>
-                    <input className="form-input" value={form.variable} onChange={e => setForm(f => ({ ...f, variable: e.target.value }))} placeholder="Ej: Peso, Diámetro, pH..." />
+                    <label className="form-label">{form.isAtributo ? 'Atributo a Controlar *' : 'Variable a Controlar *'}</label>
+                    <input className="form-input" value={form.variable} onChange={e => setForm(f => ({ ...f, variable: e.target.value }))} placeholder={form.isAtributo ? "Ej: Manchas, Golpes, Defectos..." : "Ej: Peso, Diámetro, pH..."} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Unidad de Medida</label>
-                    <input className="form-input" value={form.unidad} onChange={e => setForm(f => ({ ...f, unidad: e.target.value }))} placeholder="g, cm, pH, °Brix..." />
+                    <input className="form-input" value={form.unidad} onChange={e => setForm(f => ({ ...f, unidad: e.target.value }))} placeholder={form.isAtributo ? "Opcional" : "g, cm, pH, °Brix..."} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Nombre del Analista *</label>
@@ -317,30 +349,46 @@ export default function MuestrasPage() {
                     <label className="form-label">Fecha de Muestreo</label>
                     <input type="date" className="form-input" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} />
                   </div>
+                  {!form.isAtributo && (
+                    <>
+                      <div className="form-group">
+                        <label className="form-label">LSE (Límite Superior Especificación)</label>
+                        <input type="number" className="form-input" value={form.lse} onChange={e => setForm(f => ({ ...f, lse: e.target.value }))} placeholder="Opcional" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">LIE (Límite Inferior Especificación)</label>
+                        <input type="number" className="form-input" value={form.lie} onChange={e => setForm(f => ({ ...f, lie: e.target.value }))} placeholder="Opcional" />
+                      </div>
+                    </>
+                  )}
                   <div className="form-group">
-                    <label className="form-label">LSE (Límite Superior Especificación)</label>
-                    <input type="number" className="form-input" value={form.lse} onChange={e => setForm(f => ({ ...f, lse: e.target.value }))} placeholder="Opcional" />
+                    <label className="form-label">Número de Subgrupos (Muestras)</label>
+                    <input type="number" className="form-input" value={form.nSubgrupos} min={2} max={100} onChange={e => setForm(f => ({ ...f, nSubgrupos: e.target.value }))} />
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">LIE (Límite Inferior Especificación)</label>
-                    <input type="number" className="form-input" value={form.lie} onChange={e => setForm(f => ({ ...f, lie: e.target.value }))} placeholder="Opcional" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Número de Subgrupos (≥25 recomendado)</label>
-                    <input type="number" className="form-input" value={form.nSubgrupos} min={2} max={50} onChange={e => setForm(f => ({ ...f, nSubgrupos: e.target.value }))} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Tamaño del Subgrupo (n)</label>
-                    <select className="form-select" value={form.tamSubgrupo} onChange={e => setForm(f => ({ ...f, tamSubgrupo: e.target.value }))}>
-                      {[2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                  </div>
+                  {!form.isAtributo && (
+                    <div className="form-group">
+                      <label className="form-label">Tamaño del Subgrupo (n)</label>
+                      <select className="form-select" value={form.tamSubgrupo} onChange={e => setForm(f => ({ ...f, tamSubgrupo: e.target.value }))}>
+                        {[2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </div>
+                  )}
                   <div className="form-group" style={{ gridColumn: '1/-1' }}>
                     <label className="form-label">Notas / Observaciones</label>
                     <textarea className="form-textarea" value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))} placeholder="Observaciones generales..." />
                   </div>
                 </div>
-                <button className="btn btn-primary" onClick={initMatrix} disabled={!form.producto || !form.variable || !form.analista}>
+                <button className="btn btn-primary" onClick={() => {
+                  if (!form.producto || !form.variable || !form.analista) {
+                    alert('Por favor completa todos los campos requeridos marcados con (*): Producto, Variable/Atributo y Analista.');
+                    return;
+                  }
+                  if (form.nSubgrupos < 2) {
+                    alert('Se requiere un mínimo de 2 subgrupos para analizar.');
+                    return;
+                  }
+                  initMatrix();
+                }}>
                   Siguiente → Ingresar Datos
                 </button>
               </div>
@@ -350,22 +398,43 @@ export default function MuestrasPage() {
               <div className="card">
                 <div className="section-title" style={{ marginBottom: 4 }}>Datos por Subgrupo</div>
                 <div className="section-subtitle" style={{ marginBottom: 16 }}>
-                  {form.nSubgrupos} subgrupos × {form.tamSubgrupo} observaciones = {form.nSubgrupos * form.tamSubgrupo} datos
+                  {form.isAtributo ? `${form.nSubgrupos} subgrupos de inspección` : `${form.nSubgrupos} subgrupos × ${form.tamSubgrupo} observaciones = ${form.nSubgrupos * form.tamSubgrupo} datos`}
                 </div>
                 <div className="table-container data-table-input" style={{ maxHeight: 400, overflowY: 'auto', marginBottom: 16 }}>
                   <table>
                     <thead>
                       <tr>
                         <th>Subgrupo</th>
-                        {Array.from({ length: +form.tamSubgrupo }, (_, i) => <th key={i}>X{i + 1}</th>)}
-                        <th>X̄</th><th>R</th>
+                        {!form.isAtributo ? (
+                          <>
+                            {Array.from({ length: +form.tamSubgrupo }, (_, i) => <th key={i}>X{i + 1}</th>)}
+                            <th>X̄</th><th>R</th>
+                          </>
+                        ) : form.tipoGrafico === 'p' ? (
+                          <>
+                            <th>Tamaño de Muestra (n)</th>
+                            <th>Piezas Defectuosas (np)</th>
+                            <th>Proporción (p)</th>
+                          </>
+                        ) : (
+                          <th>Número de Defectos (c)</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
                       {matrixData.map((row, ri) => {
                         const nums = row.map(v => parseFloat(v)).filter(v => !isNaN(v));
-                        const media = nums.length === row.length ? (nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2) : '-';
-                        const rango = nums.length === row.length ? (Math.max(...nums) - Math.min(...nums)).toFixed(2) : '-';
+                        
+                        let media = '-', rango = '-', prop = '-';
+                        if (!form.isAtributo) {
+                          media = nums.length === row.length ? (nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2) : '-';
+                          rango = nums.length === row.length ? (Math.max(...nums) - Math.min(...nums)).toFixed(2) : '-';
+                        } else if (form.tipoGrafico === 'p') {
+                          if (nums.length === 2 && nums[0] > 0) {
+                            prop = (nums[1] / nums[0]).toFixed(4);
+                          }
+                        }
+
                         return (
                           <tr key={ri}>
                             <td style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{ri + 1}</td>
@@ -375,8 +444,14 @@ export default function MuestrasPage() {
                                   onChange={e => updateCell(ri, ci, e.target.value)} />
                               </td>
                             ))}
-                            <td style={{ color: 'var(--green-light)', fontFamily: 'JetBrains Mono', fontSize: 12 }}>{media}</td>
-                            <td style={{ color: '#f59e0b', fontFamily: 'JetBrains Mono', fontSize: 12 }}>{rango}</td>
+                            {!form.isAtributo ? (
+                              <>
+                                <td style={{ color: 'var(--green-light)', fontFamily: 'JetBrains Mono', fontSize: 12 }}>{media}</td>
+                                <td style={{ color: '#f59e0b', fontFamily: 'JetBrains Mono', fontSize: 12 }}>{rango}</td>
+                              </>
+                            ) : form.tipoGrafico === 'p' ? (
+                              <td style={{ color: 'var(--green-light)', fontFamily: 'JetBrains Mono', fontSize: 12 }}>{prop}</td>
+                            ) : null}
                           </tr>
                         );
                       })}
