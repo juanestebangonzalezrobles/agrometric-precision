@@ -5,9 +5,108 @@ import {
   ResponsiveContainer, Line, ScatterChart, Scatter, ReferenceLine
 } from 'recharts';
 import { normalityTest, histogram, optimizeBoxCox } from '../../lib/data';
-import { Printer, X } from 'lucide-react';
+import { Printer, X, RefreshCw } from 'lucide-react';
 
 const STORAGE_KEY = 'agrometric_registros';
+
+// Sanitización de registros con valores por defecto ultra-seguros
+function safeSanitize(r) {
+  if (!r || typeof r !== 'object') return null;
+  
+  const id = r.id || `rec_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const producto = typeof r.producto === 'string' ? r.producto.trim() : 'Sin Nombre';
+  const tipo = typeof r.tipo === 'string' ? r.tipo.trim() : 'General';
+  const variableName = typeof r.variableName === 'string' ? r.variableName.trim() : (typeof r.variable === 'string' ? r.variable.split('(')[0].trim() : 'Variable');
+  const unidad = typeof r.unidad === 'string' ? r.unidad.trim() : '';
+  const variable = unidad ? `${variableName} (${unidad})` : variableName;
+  const analista = typeof r.analista === 'string' ? r.analista.trim() : 'Analista';
+  const fecha = typeof r.fecha === 'string' ? r.fecha : new Date().toISOString().split('T')[0];
+  const isAtributo = !!r.isAtributo;
+  const tipoGrafico = typeof r.tipoGrafico === 'string' ? r.tipoGrafico : 'p';
+  const lse = r.lse !== undefined && r.lse !== null ? String(r.lse).trim() : '-';
+  const lie = r.lie !== undefined && r.lie !== null ? String(r.lie).trim() : '-';
+  const lseNum = lse !== '-' ? parseFloat(lse) : null;
+  const lieNum = lie !== '-' ? parseFloat(lie) : null;
+  const estado = typeof r.estado === 'string' ? r.estado : 'Analizado';
+  
+  let subgruposData = [];
+  if (Array.isArray(r.subgruposData)) {
+    subgruposData = r.subgruposData.map(row => {
+      if (isAtributo) {
+        if (tipoGrafico === 'p') {
+          return {
+            n: row && typeof row === 'object' ? (parseInt(row.n) || 100) : 100,
+            np: row && typeof row === 'object' ? (parseInt(row.np) || 0) : 0
+          };
+        } else {
+          return {
+            c: row && typeof row === 'object' ? (parseInt(row.c) || 0) : 0
+          };
+        }
+      } else {
+        if (Array.isArray(row)) {
+          return row.map(v => parseFloat(v) || 0);
+        }
+        return [0, 0, 0, 0, 0];
+      }
+    });
+  }
+
+  const subgrupos = subgruposData.length;
+  const tam = isAtributo ? '-' : (subgruposData[0]?.length || 5);
+
+  return {
+    id,
+    producto: producto || 'Sin Nombre',
+    tipo,
+    variable,
+    variableName: variableName || 'Variable',
+    unidad,
+    analista: analista || 'Analista',
+    fecha,
+    subgrupos,
+    tam,
+    lse,
+    lie,
+    lseNum: isNaN(lseNum) ? null : lseNum,
+    lieNum: isNaN(lieNum) ? null : lieNum,
+    estado,
+    subgruposData,
+    notes: typeof r.notas === 'string' ? r.notas.trim() : (typeof r.notes === 'string' ? r.notes.trim() : ''),
+    isAtributo,
+    tipoGrafico,
+    isDemo: !!r.isDemo
+  };
+}
+
+// Carga segura de registros
+function getSafeRecords() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(safeSanitize)
+      .filter(Boolean)
+      .filter(r => !r.isDemo && !r.id.startsWith('demo_')); // Filtrar siempre demos de presets antiguos
+  } catch (e) {
+    console.error('Error al parsear localStorage:', e);
+    return [];
+  }
+}
+
+// Guardado seguro de registros
+function saveSafeRecords(records) {
+  if (typeof window === 'undefined') return;
+  try {
+    const clean = Array.isArray(records) ? records.map(safeSanitize).filter(Boolean) : [];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+  } catch (e) {
+    console.error('Error al escribir en localStorage:', e);
+  }
+}
 
 function normalPDF(x, mean, sigma) {
   return Math.exp(-0.5 * ((x - mean) / sigma) ** 2) / (sigma * Math.sqrt(2 * Math.PI));
@@ -55,10 +154,9 @@ export default function NormalidadClient() {
   // Load user records from localStorage
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      let records = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(records)) records = [];
-      const variables = records.filter(r => r && r.subgruposData && Array.isArray(r.subgruposData) && r.subgruposData.length > 0 && !r.isAtributo);
+      const loaded = getSafeRecords();
+      saveSafeRecords(loaded); // Reescribir de inmediato para limpiar localStorage
+      const variables = loaded.filter(r => !r.isAtributo);
       setUserRecords(variables);
       if (variables.length > 0 && variables[0]?.subgruposData) {
         setSelected('user_0');

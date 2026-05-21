@@ -1,21 +1,137 @@
 'use client';
+
 import { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts';
-import { calcP, calcC, manzanillaP, tomateDefectos } from '../../lib/data';
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ReferenceLine, 
+  ResponsiveContainer 
+} from 'recharts';
+import { manzanillaP, tomateDefectos } from '../../lib/data';
 import { analyzeNelsonRules, getNelsonDiagnostic } from '../../lib/nelson';
-import { Printer, AlertTriangle, FileText, Check, Settings, X, Info } from 'lucide-react';
+import { 
+  Printer, 
+  AlertTriangle, 
+  FileText, 
+  Check, 
+  Settings, 
+  X, 
+  Info,
+  RefreshCw,
+  TrendingUp,
+  LayoutGrid
+} from 'lucide-react';
 
 const STORAGE_KEY = 'agrometric_registros';
 
-const PRESETS = {
-  manzanilla_p: { label: 'Manzanilla — Gráfico P', ds: manzanillaP, tipo: 'p' },
-  tomate_c: { label: 'Tomate — Gráfico C', ds: tomateDefectos, tipo: 'c' },
-};
-
-const CustomDot = (props) => {
-  const { cx, cy, payload, oocKey, normalColor = "#10b981" } = props;
+// Sanitización de registros con valores por defecto ultra-seguros
+function safeSanitize(r) {
+  if (!r || typeof r !== 'object') return null;
   
-  if (payload.rulesViolated && payload.rulesViolated.length > 0) {
+  const id = r.id || `rec_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const producto = typeof r.producto === 'string' ? r.producto.trim() : 'Sin Nombre';
+  const tipo = typeof r.tipo === 'string' ? r.tipo.trim() : 'General';
+  const variableName = typeof r.variableName === 'string' ? r.variableName.trim() : (typeof r.variable === 'string' ? r.variable.split('(')[0].trim() : 'Variable');
+  const unidad = typeof r.unidad === 'string' ? r.unidad.trim() : '';
+  const variable = unidad ? `${variableName} (${unidad})` : variableName;
+  const analista = typeof r.analista === 'string' ? r.analista.trim() : 'Analista';
+  const fecha = typeof r.fecha === 'string' ? r.fecha : new Date().toISOString().split('T')[0];
+  const isAtributo = !!r.isAtributo;
+  const tipoGrafico = typeof r.tipoGrafico === 'string' ? r.tipoGrafico : 'p';
+  const lse = r.lse !== undefined && r.lse !== null ? String(r.lse).trim() : '-';
+  const lie = r.lie !== undefined && r.lie !== null ? String(r.lie).trim() : '-';
+  const lseNum = lse !== '-' ? parseFloat(lse) : null;
+  const lieNum = lie !== '-' ? parseFloat(lie) : null;
+  const estado = typeof r.estado === 'string' ? r.estado : 'Analizado';
+  
+  let subgruposData = [];
+  if (Array.isArray(r.subgruposData)) {
+    subgruposData = r.subgruposData.map(row => {
+      if (isAtributo) {
+        if (tipoGrafico === 'p') {
+          return {
+            n: row && typeof row === 'object' ? (parseInt(row.n) || 100) : 100,
+            np: row && typeof row === 'object' ? (parseInt(row.np) || 0) : 0
+          };
+        } else {
+          return {
+            c: row && typeof row === 'object' ? (parseInt(row.c) || 0) : 0
+          };
+        }
+      } else {
+        if (Array.isArray(row)) {
+          return row.map(v => parseFloat(v) || 0);
+        }
+        return [0, 0, 0, 0, 0];
+      }
+    });
+  }
+
+  const subgrupos = subgruposData.length;
+  const tam = isAtributo ? '-' : (subgruposData[0]?.length || 5);
+
+  return {
+    id,
+    producto: producto || 'Sin Nombre',
+    tipo,
+    variable,
+    variableName: variableName || 'Variable',
+    unidad,
+    analista: analista || 'Analista',
+    fecha,
+    subgrupos,
+    tam,
+    lse,
+    lie,
+    lseNum: isNaN(lseNum) ? null : lseNum,
+    lieNum: isNaN(lieNum) ? null : lieNum,
+    estado,
+    subgruposData,
+    notes: typeof r.notas === 'string' ? r.notas.trim() : (typeof r.notes === 'string' ? r.notes.trim() : ''),
+    isAtributo,
+    tipoGrafico,
+    isDemo: !!r.isDemo
+  };
+}
+
+// Carga segura de registros
+function getSafeRecords() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(safeSanitize)
+      .filter(Boolean)
+      .filter(r => !r.isDemo && !r.id.startsWith('demo_')); // Filtrar siempre demos de presets antiguos
+  } catch (e) {
+    console.error('Error al parsear localStorage:', e);
+    return [];
+  }
+}
+
+// Guardado seguro de registros
+function saveSafeRecords(records) {
+  if (typeof window === 'undefined') return;
+  try {
+    const clean = Array.isArray(records) ? records.map(safeSanitize).filter(Boolean) : [];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+  } catch (e) {
+    console.error('Error al escribir en localStorage:', e);
+  }
+}
+
+// Renderizador personalizado de puntos inestables
+const CustomDot = (props) => {
+  const { cx, cy, payload, oocKey, normalColor = "var(--green-light)" } = props;
+  
+  if (payload?.rulesViolated && payload.rulesViolated.length > 0) {
     const hasRule1 = payload.rulesViolated.includes(1);
     const color = hasRule1 ? "#ef4444" : "#f59e0b";
     const radius = hasRule1 ? 6 : 5.5;
@@ -23,14 +139,24 @@ const CustomDot = (props) => {
       <g key={`dot-g-${payload.sg}`}>
         <circle cx={cx} cy={cy} r={radius + 3} fill={color} opacity={0.25} />
         <circle cx={cx} cy={cy} r={radius} fill={color} stroke="#ffffff" strokeWidth={1.5} />
-        <text x={cx} y={cy - 10} textAnchor="middle" fill={color} fontSize={9} fontWeight="bold" stroke="#000" strokeWidth={2} paintOrder="stroke">
+        <text 
+          x={cx} 
+          y={cy - 10} 
+          textAnchor="middle" 
+          fill={color} 
+          fontSize={9} 
+          fontWeight="bold" 
+          stroke="var(--bg-card)" 
+          strokeWidth={2.5} 
+          paintOrder="stroke"
+        >
           R{payload.rulesViolated.join(',')}
         </text>
       </g>
     );
   }
   
-  const isOoc = oocKey ? payload[oocKey] : payload.ooc;
+  const isOoc = oocKey ? payload[oocKey] : payload?.ooc;
   if (isOoc) {
     return (
       <g key={`dot-g-ooc-${payload.sg}`}>
@@ -39,25 +165,26 @@ const CustomDot = (props) => {
       </g>
     );
   }
-  return <circle key={`dot-c-normal-${payload.sg}`} cx={cx} cy={cy} r={4} fill={normalColor} stroke={normalColor} strokeWidth={1.5} />;
+  return <circle key={`dot-c-normal-${payload.sg}`} cx={cx} cy={cy} r={4.5} fill={normalColor} stroke="var(--bg-card)" strokeWidth={1.5} />;
 };
 
 export default function AtributosPage() {
+  const [mounted, setMounted] = useState(false);
   const [preset, setPreset] = useState('custom');
   const [customMode, setCustomMode] = useState(true);
   const [ds, setDs] = useState(null);
   const [tipo, setTipo] = useState('p');
   const [result, setResult] = useState(null);
   
-  // Custom form state
-  const [customRows, setCustomRows] = useState(25);
-  const [customN, setCustomN] = useState(100); // only used for 'p'
+  // Datos personalizados manuales
+  const [customRows, setCustomRows] = useState(15);
+  const [customN, setCustomN] = useState(100); 
   const [customValues, setCustomValues] = useState([]);
 
-  // User records from dashboard
+  // Registros de usuario cargados
   const [userRecords, setUserRecords] = useState([]);
 
-  // State for Customizable Report PDF Builder
+  // Control de Reporte PDF
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [printConfig, setPrintConfig] = useState({
     info: true,
@@ -66,51 +193,64 @@ export default function AtributosPage() {
     table: true,
   });
 
-  // Load user records
+  // Carga segura y prevencion de hydration mismatches
   useEffect(() => {
+    setMounted(true);
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        let records = JSON.parse(raw);
-        if (!Array.isArray(records)) records = [];
-        const attrRecords = records.filter(r => r && r.subgruposData && r.subgruposData.length > 0 && r.isAtributo);
-        setUserRecords(attrRecords);
-        if (attrRecords.length > 0) {
-          setPreset('user_0');
-        }
+      const loaded = getSafeRecords();
+      saveSafeRecords(loaded); // Reescribir de inmediato para limpiar localStorage
+      const attrRecords = loaded.filter(r => !!r.isAtributo);
+      setUserRecords(attrRecords);
+      if (attrRecords.length > 0) {
+        setPreset('user_0');
+        setCustomMode(false);
       }
-    } catch {
+    } catch (e) {
+      console.error('Error al inicializar AtributosPage:', e);
       setUserRecords([]);
     }
   }, []);
 
-  // Compute logic
+  // Motor matemático de análisis y Nelson Rules sobre Atributos
   function computeChartResults(subgrupos, tipoGrafico) {
     if (!subgrupos || subgrupos.length === 0) return null;
+    
     let chartData = [];
     let lcVal = 0, uclVal = 0, lclVal = 0;
-    let nelsonDiagnostic = { totalViolations: 0, analysis: [] };
     
     if (tipoGrafico === 'p') {
-      const totalN = subgrupos.reduce((sum, s) => sum + (s.n || 0), 0);
-      const totalNP = subgrupos.reduce((sum, s) => sum + (s.np || 0), 0);
+      const totalN = subgrupos.reduce((sum, s) => sum + (parseInt(s.n) || 100), 0);
+      const totalNP = subgrupos.reduce((sum, s) => sum + (parseInt(s.np) || 0), 0);
       const pbar = totalN > 0 ? totalNP / totalN : 0;
       
       chartData = subgrupos.map((s, i) => {
-        const n = s.n || 0;
-        const p = n > 0 ? (s.np || 0) / n : 0;
+        const n = Math.max(1, parseInt(s.n) || 100);
+        const np = Math.max(0, parseInt(s.np) || 0);
+        const p = np / n;
         const stdDev = Math.sqrt((pbar * (1 - pbar)) / n);
         const ucl = pbar + 3 * stdDev;
         const lcl = Math.max(0, pbar - 3 * stdDev);
-        return { sg: i + 1, p, n, np: s.np, ucl, lcl, pbar, ooc: p > ucl || p < lcl };
+        const z = stdDev > 0 ? (p - pbar) / stdDev : 0;
+        
+        return { 
+          sg: i + 1, 
+          p, 
+          n, 
+          np, 
+          ucl, 
+          lcl, 
+          pbar, 
+          ooc: p > ucl || p < lcl,
+          z
+        };
       });
       
       lcVal = pbar;
-      uclVal = chartData[0]?.ucl;
-      lclVal = chartData[0]?.lcl;
+      uclVal = chartData[0]?.ucl || 0;
+      lclVal = chartData[0]?.lcl || 0;
     } else {
       const k = subgrupos.length;
-      const totalC = subgrupos.reduce((sum, s) => sum + (s.c || 0), 0);
+      const totalC = subgrupos.reduce((sum, s) => sum + (parseInt(s.c) || 0), 0);
       const cbar = k > 0 ? totalC / k : 0;
       
       const stdDev = Math.sqrt(cbar);
@@ -118,31 +258,70 @@ export default function AtributosPage() {
       const lcl = Math.max(0, cbar - 3 * stdDev);
       
       chartData = subgrupos.map((s, i) => {
-        const c = s.c || 0;
-        return { sg: i + 1, c, ucl, lcl, cbar, ooc: c > ucl || c < lcl };
+        const c = Math.max(0, parseInt(s.c) || 0);
+        const z = stdDev > 0 ? (c - cbar) / stdDev : 0;
+        
+        return { 
+          sg: i + 1, 
+          c, 
+          ucl, 
+          lcl, 
+          cbar, 
+          ooc: c > ucl || c < lcl,
+          z
+        };
       });
       
       lcVal = cbar;
-      uclVal = chartData[0]?.ucl;
-      lclVal = chartData[0]?.lcl;
+      uclVal = chartData[0]?.ucl || 0;
+      lclVal = chartData[0]?.lcl || 0;
     }
+
+    // Aplicación del Motor de Reglas de Nelson (Matemática Real)
+    const zScores = chartData.map(d => d.z);
+    const nelsonAnalysis = analyzeNelsonRules(zScores);
+    const nelsonDiagnostic = getNelsonDiagnostic(nelsonAnalysis);
     
-    return { tipo: tipoGrafico, data: chartData, lcVal, uclVal, lclVal, nelsonDiagnostic };
+    // Inyectar resultados de alertas en cada punto
+    chartData.forEach((d, i) => {
+      d.rulesViolated = nelsonAnalysis[i]?.rulesViolated || [];
+    });
+    
+    return { 
+      tipo: tipoGrafico, 
+      data: chartData, 
+      lcVal, 
+      uclVal, 
+      lclVal, 
+      nelsonDiagnostic 
+    };
   }
 
   const handleCustomCalc = () => {
     try {
       if (tipo === 'p') {
-        const sgs = customValues.map(v => ({ n: customN, np: +v || 0 }));
+        const sgs = Array.from({ length: customRows }, (_, i) => {
+          const npVal = parseInt(customValues[i]) || 0;
+          return { n: customN, np: npVal };
+        });
         setResult(computeChartResults(sgs, 'p'));
-      } else if (tipo === 'c') {
-        const sgs = customValues.map(v => ({ c: +v || 0 }));
+      } else {
+        const sgs = Array.from({ length: customRows }, (_, i) => {
+          const cVal = parseInt(customValues[i]) || 0;
+          return { c: cVal };
+        });
         setResult(computeChartResults(sgs, 'c'));
       }
-    } catch { alert('Error en los datos'); }
+    } catch (err) {
+      console.error(err);
+      alert('Error en el formato de los datos manuales');
+    }
   };
 
+  // Escuchar cambios de preset o datos
   useEffect(() => {
+    if (!mounted) return;
+    
     if (preset === 'custom') {
       setCustomMode(true);
       setDs(null);
@@ -151,7 +330,7 @@ export default function AtributosPage() {
       setCustomMode(false);
       const idx = parseInt(preset.replace('user_', ''));
       const rec = userRecords[idx];
-      if (rec && rec.subgruposData) {
+      if (rec && Array.isArray(rec.subgruposData)) {
         const fakeDs = {
           producto: rec.producto,
           atributo: rec.variableName || rec.variable,
@@ -163,129 +342,213 @@ export default function AtributosPage() {
         setResult(computeChartResults(rec.subgruposData, rec.tipoGrafico || 'p'));
       }
     }
-  }, [preset, userRecords]);
+  }, [preset, userRecords, mounted, customRows, customN]);
 
-  const totalAlerts = result ? result.data.filter(d => d.ooc).length : 0;
+  // Recalcular custom al cambiar tipo
+  useEffect(() => {
+    if (mounted && preset === 'custom') {
+      handleCustomCalc();
+    }
+  }, [tipo, mounted]);
+
+  const handlePrint = () => {
+    setIsReportModalOpen(false);
+    setTimeout(() => {
+      if (typeof window !== 'undefined') window.print();
+    }, 200);
+  };
+
+  // Prevenir Hydration Mismatches
+  if (!mounted) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 16 }}>
+        <RefreshCw className="animate-spin" size={40} style={{ color: 'var(--green-light)' }} />
+        <div style={{ color: 'var(--text-muted)', fontSize: 14, fontFamily: 'Outfit, sans-serif' }}>Iniciando entorno interactivo seguro...</div>
+      </div>
+    );
+  }
+
+  const totalAlerts = result ? result.data.filter(d => d.ooc || (d.rulesViolated && d.rulesViolated.length > 0)).length : 0;
 
   return (
     <>
-      <div className="header no-print">
+      <div className="header no-print" style={{
+        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, rgba(4, 120, 87, 0.02) 100%)',
+        padding: '24px 32px',
+        borderRadius: '16px',
+        border: '1px solid var(--border)',
+        marginBottom: '24px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 16
+      }}>
         <div>
-          <div className="header-title">Control de Atributos</div>
-          <div className="header-subtitle">Gráficos de inestabilidad de atributos continuos.</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <LayoutGrid style={{ color: 'var(--green-light)' }} size={22} />
+            <h1 className="header-title" style={{ margin: 0, fontSize: '24px', fontWeight: 800 }}>Control de Atributos</h1>
+          </div>
+          <p className="header-subtitle" style={{ margin: 0, color: 'var(--text-muted)', fontSize: '13px' }}>
+            Monitoreo y análisis de defectos en lotes agrícolas mediante gráficos P y C con Nelson Rules activas.
+          </p>
         </div>
-        <button className="btn btn-primary" onClick={() => setIsReportModalOpen(true)}>
-          <Printer size={16} /> Generar Reporte PDF
-        </button>
+        {result && (
+          <button className="btn btn-primary" onClick={() => setIsReportModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Printer size={16} /> Generar Reporte PDF
+          </button>
+        )}
       </div>
 
       <div className="page-content fade-in">
-        <div className="card no-print" style={{ marginBottom: 16 }}>
-          <div className="section-title" style={{ marginBottom: 12 }}>Seleccionar Tipo de Gráfico y Datos</div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {/* Panel de selección */}
+        <div className="card no-print" style={{ marginBottom: 16, border: '1px solid var(--border)', borderRadius: '12px' }}>
+          <div className="section-title" style={{ marginBottom: 12, fontSize: '14.5px', fontWeight: 700 }}>
+            📦 Seleccionar Lote o Matriz de Datos
+          </div>
+          
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: userRecords.length === 0 ? 0 : 12 }}>
             {[
-              ...userRecords.map((r, i) => ({ key: `user_${i}`, label: `${r.producto} — Gráfico ${r.tipoGrafico?.toUpperCase() || 'P'}` })),
-              { key: 'custom', label: 'Mis datos' },
+              ...userRecords.map((r, i) => ({ key: `user_${i}`, label: `${r.producto} (${r.variableName || r.variable}) — Gráfico ${r.tipoGrafico?.toUpperCase() || 'P'}` })),
+              { key: 'custom', label: '📊 Entrar Datos Manuales (Borrador)' },
             ].map(opt => (
-              <button key={opt.key} className={`btn ${preset === opt.key ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setPreset(opt.key)}>
+              <button 
+                key={opt.key} 
+                className={`btn ${preset === opt.key ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setPreset(opt.key)}
+                style={{ fontSize: '12.5px', padding: '8px 16px' }}
+              >
                 {opt.label}
               </button>
             ))}
           </div>
+          
           {userRecords.length === 0 && (
-            <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
-              Guarda un registro de <strong>Atributos</strong> en la pestaña Muestras para analizarlo aquí.
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.15)',
+              padding: '10px 14px', borderRadius: '8px', fontSize: '12px', color: '#f59e0b', marginTop: 8
+            }}>
+              💡 No hay registros de atributos de usuario creados. Registra muestras marcando la opción <strong>Atributos (Gráfico P o C)</strong> en la pestaña Muestras para ver tus lotes aquí.
             </div>
           )}
         </div>
 
+        {/* Carga Manual */}
         {customMode && (
-          <div className="card no-print" style={{ marginBottom: 16 }}>
-            <div className="section-title" style={{ marginBottom: 12 }}>Configurar Datos Personalizados</div>
-            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+          <div className="card no-print" style={{ marginBottom: 16, border: '1px solid var(--border)', borderRadius: '12px' }}>
+            <div className="section-title" style={{ marginBottom: 12, fontSize: '14px', fontWeight: 700 }}>Configuración de Muestreo Manual</div>
+            
+            <div className="grid-3" style={{ gap: 12, marginBottom: 16 }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">Tipo de Gráfico</label>
-                <select className="form-select" style={{ width: 140 }} value={tipo} onChange={e => { setTipo(e.target.value); setCustomValues([]); }}>
-                  <option value="p">Gráfico P (proporción)</option>
-                  <option value="c">Gráfico C (defectos)</option>
+                <label className="form-label">Tipo de Gráfica</label>
+                <select className="form-select" value={tipo} onChange={e => { setTipo(e.target.value); setCustomValues([]); }}>
+                  <option value="p">Gráfico P (Porcentaje defectuoso)</option>
+                  <option value="c">Gráfico C (Recuento de defectos)</option>
                 </select>
               </div>
+              
               {tipo === 'p' && (
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Tamaño de muestra (n)</label>
-                  <input type="number" className="form-input" style={{ width: 120 }} value={customN} onChange={e => setCustomN(+e.target.value)} />
+                  <label className="form-label">Tamaño muestra (n)</label>
+                  <input type="number" min={1} className="form-input" value={customN} onChange={e => setCustomN(Math.max(1, parseInt(e.target.value) || 100))} />
                 </div>
               )}
+              
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Número de subgrupos</label>
-                <input type="number" className="form-input" style={{ width: 120 }} value={customRows} onChange={e => { setCustomRows(+e.target.value); setCustomValues([]); }} />
+                <input type="number" min={2} max={100} className="form-input" value={customRows} onChange={e => { setCustomRows(Math.max(2, Math.min(100, parseInt(e.target.value) || 15))); setCustomValues([]); }} />
               </div>
             </div>
 
-            <div className="table-container data-table-input" style={{ maxHeight: 280, overflowY: 'auto', marginBottom: 16 }}>
-              <table><thead><tr>
-                <th>Subgrupo</th>
-                <th>{tipo === 'p' ? 'Defectuosos (np)' : 'Defectos (c)'}</th>
-              </tr></thead>
-              <tbody>
-                {Array.from({ length: customRows }, (_, i) => (
-                  <tr key={i}>
-                    <td style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{i + 1}</td>
-                    <td><input type="number" value={customValues[i] ?? ''} placeholder="0"
-                      onChange={e => { const v = [...customValues]; v[i] = e.target.value; setCustomValues(v); }} /></td>
+            <div className="table-container" style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: 16 }}>
+              <table style={{ width: '100%', fontSize: '12.5px' }}>
+                <thead>
+                  <tr style={{ background: 'rgba(255, 255, 255, 0.02)' }}>
+                    <th style={{ padding: '8px 12px', textAlign: 'center', width: '90px' }}>Subgrupo</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>
+                      {tipo === 'p' ? `Piezas Defectuosas np (de n = ${customN})` : 'Recuento de Defectos (c)'}
+                    </th>
                   </tr>
-                ))}
-              </tbody></table>
+                </thead>
+                <tbody>
+                  {Array.from({ length: customRows }, (_, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 600, color: 'var(--text-muted)' }}>{i + 1}</td>
+                      <td style={{ padding: '4px 8px' }}>
+                        <input 
+                          type="number" 
+                          min={0}
+                          placeholder="0"
+                          value={customValues[i] !== undefined ? customValues[i] : ''}
+                          onChange={e => { 
+                            const v = [...customValues]; 
+                            v[i] = e.target.value; 
+                            setCustomValues(v); 
+                          }}
+                          style={{
+                            width: '100%', background: 'var(--bg-secondary)', color: '#fff',
+                            border: '1px solid var(--border)', padding: '5px 10px', borderRadius: '4px',
+                            fontFamily: 'JetBrains Mono', textAlign: 'right'
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <button className="btn btn-primary" onClick={handleCustomCalc}>Calcular</button>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn-primary" onClick={handleCustomCalc} style={{ padding: '8px 20px' }}>
+                ⚡ Calcular Estadísticas
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Info cards (Printable conditionally) */}
+        {/* Tarjetas de Información del Lote */}
         {!customMode && (
           <div className={`${!printConfig.info ? 'no-print' : ''}`} style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
             {[
-              { label: 'Producto', val: ds?.producto },
-              { label: 'Atributo Controlado', val: ds?.atributo },
-              { label: 'Tipo Gráfico', val: result?.tipo?.toUpperCase() },
-              { label: 'Alertas Estadísticas', val: totalAlerts, color: totalAlerts > 0 ? '#f59e0b' : 'var(--green-light)' },
+              { label: 'Producto Evaluado', val: ds?.producto || 'General' },
+              { label: 'Atributo Auditado', val: ds?.atributo || 'Atributo' },
+              { label: 'Modelo Gráfico', val: `Tipo ${result?.tipo?.toUpperCase() || 'P'}` },
+              { label: 'Alertas Totales', val: totalAlerts, color: totalAlerts > 0 ? '#ef4444' : 'var(--green-light)' },
             ].map((item, i) => (
-              <div key={i} className="card print-inline-card" style={{ padding: '10px 16px', flex: 1, minWidth: 120 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{item.label}</div>
-                <div className="print-text-dark" style={{ fontSize: 14, fontWeight: 700, color: item.color || 'var(--text-primary)' }}>{item.val}</div>
+              <div key={i} className="card print-inline-card" style={{ padding: '12px 18px', flex: 1, minWidth: 150, border: '1px solid var(--border)', borderRadius: '10px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>{item.label}</div>
+                <div className="print-text-dark" style={{ fontSize: '15px', fontWeight: 800, color: item.color || 'var(--text-primary)' }}>{item.val}</div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Límites (Printable conditionally) */}
+        {/* Límites de Control */}
         {result && result.data.length > 0 && (
-          <div className={`grid-3 ${!printConfig.info ? 'no-print' : ''}`} style={{ marginBottom: 16 }}>
-            {result.tipo === 'p' && [
-              { label: 'p̄ (Proporción Media)', val: result.data[0].pbar?.toFixed(4) },
-              { label: 'LCS Promedio', val: result.data[0].ucl?.toFixed(4), color: '#ef4444' },
-              { label: 'LCI Promedio', val: result.data[0].lcl?.toFixed(4), color: '#ef4444' },
+          <div className={`grid-3 ${!printConfig.info ? 'no-print' : ''}`} style={{ marginBottom: 16, gap: 12 }}>
+            {result.tipo === 'p' ? [
+              { label: 'p̄ (Tasa de Defecto Promedio)', val: `${(result.lcVal * 100).toFixed(2)}%` },
+              { label: 'Línea de Control Superior (LCS)', val: `${(result.uclVal * 100).toFixed(2)}%`, color: '#ef4444' },
+              { label: 'Línea de Control Inferior (LCI)', val: `${(result.lclVal * 100).toFixed(2)}%`, color: '#ef4444' },
             ].map((s, i) => (
-              <div key={i} className="card" style={{ textAlign: 'center', padding: '12px 10px' }}>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>{s.label}</div>
-                <div className="print-text-dark" style={{ fontSize: 20, fontWeight: 800, fontFamily: 'JetBrains Mono', color: s.color || 'var(--green-light)' }}>{s.val}</div>
+              <div key={i} className="card" style={{ textAlign: 'center', padding: '14px', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>{s.label}</div>
+                <div className="print-text-dark" style={{ fontSize: '20px', fontWeight: 800, fontFamily: 'JetBrains Mono', color: s.color || 'var(--green-light)' }}>{s.val}</div>
               </div>
-            ))}
-            {result.tipo === 'c' && [
-              { label: 'c̄ (Defectos Medios)', val: result.data[0].cbar?.toFixed(4) },
-              { label: 'LCS', val: result.data[0].ucl?.toFixed(4), color: '#ef4444' },
-              { label: 'LCI', val: result.data[0].lcl?.toFixed(4), color: '#ef4444' },
+            )) : [
+              { label: 'c̄ (Promedio de Defectos)', val: result.lcVal?.toFixed(3) },
+              { label: 'Línea de Control Superior (LCS)', val: result.uclVal?.toFixed(3), color: '#ef4444' },
+              { label: 'Línea de Control Inferior (LCI)', val: result.lclVal?.toFixed(3), color: '#ef4444' },
             ].map((s, i) => (
-              <div key={i} className="card" style={{ textAlign: 'center', padding: '12px 10px' }}>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>{s.label}</div>
-                <div className="print-text-dark" style={{ fontSize: 20, fontWeight: 800, fontFamily: 'JetBrains Mono', color: s.color || 'var(--green-light)' }}>{s.val}</div>
+              <div key={i} className="card" style={{ textAlign: 'center', padding: '14px', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>{s.label}</div>
+                <div className="print-text-dark" style={{ fontSize: '20px', fontWeight: 800, fontFamily: 'JetBrains Mono', color: s.color || 'var(--green-light)' }}>{s.val}</div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Chart */}
+        {/* Gráfico Recharts */}
         {result && (() => {
           const chartVals = result.data.map(d => result.tipo === 'p' ? d.p : d.c);
           const uclVal = result.uclVal || 0;
@@ -293,93 +556,121 @@ export default function AtributosPage() {
           const lcVal = result.lcVal || 0;
           const yMin = Math.min(...chartVals, lclVal);
           const yMax = Math.max(...chartVals, uclVal);
-          const pad = (yMax - yMin) * 0.15 || 0.1;
+          const pad = (yMax - yMin) * 0.15 || 0.05;
           const domainAttr = [Math.max(0, +(yMin - pad).toFixed(4)), +(yMax + pad).toFixed(4)];
 
           return (
-            <div className={`chart-wrapper ${!printConfig.chart ? 'no-print' : ''}`}>
-              <div className="chart-title print-text-dark">
-                {result.tipo === 'p' ? 'Gráfico P — Proporción de Defectuosos' : 'Gráfico C — Defectos por Unidad'}
+            <div className={`card chart-wrapper ${!printConfig.chart ? 'no-print' : ''}`} style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', marginBottom: 16 }}>
+              <div className="chart-title print-text-dark" style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', marginBottom: 4 }}>
+                {result.tipo === 'p' ? '📉 Gráfico P — Fracción de Unidades Defectuosas' : '📊 Gráfico C — Cantidad de Defectos por Muestra'}
               </div>
-              <div className="chart-desc print-text-muted">
-                Detección activa de rachas y causas asignables. LCS = {uclVal?.toFixed(4)} | LC = {lcVal?.toFixed(4)} | LCI = {lclVal?.toFixed(4)}
+              <div className="chart-desc print-text-muted" style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: 16 }}>
+                Bandas estadísticas de control sigma ±3σ y Nelson Rules. LCS: {uclVal?.toFixed(4)} | LC: {lcVal?.toFixed(4)} | LCI: {lclVal?.toFixed(4)}
               </div>
-              <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={result.data} margin={{ top: 20, right: 90, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="sg" stroke="var(--text-muted)" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} label={{ value: 'Subgrupo', position: 'insideBottom', offset: -2, fill: 'var(--text-muted)', fontSize: 11 }} />
-                  <YAxis stroke="var(--text-muted)" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} domain={domainAttr} allowDataOverflow={true} />
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={result.data} margin={{ top: 15, right: 80, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.6} />
+                  <XAxis 
+                    dataKey="sg" 
+                    stroke="var(--text-muted)" 
+                    tick={{ fontSize: 11, fill: 'var(--text-muted)' }} 
+                    label={{ value: 'Subgrupo (Orden Temporal)', position: 'insideBottom', offset: -5, fill: 'var(--text-muted)', fontSize: 11 }} 
+                  />
+                  <YAxis 
+                    stroke="var(--text-muted)" 
+                    tick={{ fontSize: 11, fill: 'var(--text-muted)' }} 
+                    domain={domainAttr} 
+                    allowDataOverflow={true} 
+                  />
                   <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
-                  <ReferenceLine y={uclVal} stroke="#ef4444" strokeWidth={2} label={{ value: `LCS: ${uclVal?.toFixed(4)}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold', position: 'right' }} />
+                  <ReferenceLine y={uclVal} stroke="#ef4444" strokeWidth={2} strokeDasharray="4 4" label={{ value: `LCS: ${uclVal?.toFixed(4)}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold', position: 'right' }} />
                   <ReferenceLine y={lcVal} stroke="var(--green-primary)" strokeWidth={2} label={{ value: `LC: ${lcVal?.toFixed(4)}`, fill: 'var(--green-primary)', fontSize: 10, fontWeight: 'bold', position: 'right' }} />
-                  {lclVal > 0 && <ReferenceLine y={lclVal} stroke="#ef4444" strokeWidth={2} label={{ value: `LCI: ${lclVal?.toFixed(4)}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold', position: 'right' }} />}
-                  <Line type="monotone" dataKey={result.tipo === 'p' ? 'p' : 'c'} stroke="var(--green-light)" strokeWidth={2}
+                  {lclVal > 0 && <ReferenceLine y={lclVal} stroke="#ef4444" strokeWidth={2} strokeDasharray="4 4" label={{ value: `LCI: ${lclVal?.toFixed(4)}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold', position: 'right' }} />}
+                  
+                  <Line 
+                    type="monotone" 
+                    dataKey={result.tipo === 'p' ? 'p' : 'c'} 
+                    stroke="var(--green-light)" 
+                    strokeWidth={2.5}
                     dot={<CustomDot oocKey="ooc" normalColor="var(--green-light)" />}
-                    name={result.tipo === 'p' ? 'p' : 'c'} />
+                    name={result.tipo === 'p' ? 'Proporción (p)' : 'Defectos (c)'} 
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           );
         })()}
 
-        {/* ── DIAGNÓSTICO TÉCNICO Y REGLAS DE NELSON (Printable conditionally) ── */}
+        {/* Diagnóstico Nelson Rules */}
         {result && (() => {
           const oocPts = result.data.filter(d => d.ooc);
           const activeNelsonAlerts = result.nelsonDiagnostic.activeAlerts;
           const isControlled = result.nelsonDiagnostic.isControlled && oocPts.length === 0;
           const totalPts = result.data.length;
           const rate = result.tipo === 'p' ? (result.lcVal * 100).toFixed(2) : result.lcVal?.toFixed(2);
-          const rateLabel = result.tipo === 'p' ? `${rate}% defectuosos en promedio` : `${rate} defectos promedio por unidad`;
+          const rateLabel = result.tipo === 'p' ? `${rate}% unidades defectuosas` : `${rate} defectos por lote`;
 
           return (
-            <div className={`card ${!printConfig.nelson ? 'no-print' : ''}`} style={{ border: '1px solid var(--green-primary)', borderLeft: '4px solid var(--green-primary)', marginTop: 16 }}>
-              <div className="section-title print-text-dark" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                Diagnóstico Técnico — Análisis de Atributos & Nelson Rules
-                <span className={`badge ${isControlled ? 'badge-green' : 'badge-red'}`} style={{ fontSize: 11 }}>
-                  {isControlled ? 'Proceso Estable' : 'Fuera de Control'}
+            <div className={`card ${!printConfig.nelson ? 'no-print' : ''}`} style={{ 
+              border: `1px solid ${isControlled ? 'var(--green-primary)' : 'rgba(239, 68, 68, 0.4)'}`, 
+              borderLeft: `5px solid ${isControlled ? 'var(--green-primary)' : '#ef4444'}`, 
+              borderRadius: '12px',
+              marginTop: 16,
+              padding: '20px'
+            }}>
+              
+              <div className="section-title print-text-dark" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '15px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  🛡️ Diagnóstico de Calidad y Estabilidad del Lote
+                </span>
+                <span className={`badge ${isControlled ? 'badge-green' : 'badge-red'}`} style={{ fontSize: 11, padding: '4px 10px', borderRadius: '6px' }}>
+                  {isControlled ? 'Proceso Estable' : 'Causas Especiales Activas'}
                 </span>
               </div>
 
-              {/* Estado general */}
-              <div style={{ padding: '14px 16px', borderRadius: 8, marginBottom: 14,
-                background: isControlled ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
-                border: `1px solid ${isControlled ? 'var(--green-primary)' : '#ef4444'}` }}>
-                <div className="print-text-dark" style={{ fontWeight: 700, fontSize: 15, color: isControlled ? 'var(--green-light)' : '#ef4444', marginBottom: 4 }}>
+              {/* Caja de Estado */}
+              <div style={{ 
+                padding: '14px 16px', borderRadius: 8, marginBottom: 16,
+                background: isControlled ? 'rgba(16,185,129,0.04)' : 'rgba(239,68,68,0.04)',
+                border: `1px solid ${isControlled ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'}` 
+              }}>
+                <div className="print-text-dark" style={{ fontWeight: 700, fontSize: 14.5, color: isControlled ? 'var(--green-light)' : '#ef4444', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
                   {isControlled
-                    ? 'Proceso de atributos bajo control estadístico completo'
-                    : `Inestabilidad en Atributos — ${totalAlerts} patrones de alerta activos`}
+                    ? 'Proceso agrícola operando bajo control estadístico'
+                    : `Lote inestable fuera de control — ${activeNelsonAlerts.length} patrones detectados`}
                 </div>
-                <div className="print-text-muted" style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                  Gráfico <strong>{result.tipo.toUpperCase()}</strong> · {totalPts} subgrupos analizados · {rateLabel}<br />
+                
+                <p className="print-text-muted" style={{ fontSize: '12.5px', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
+                  Gráfico <strong>{result.tipo.toUpperCase()}</strong> · {totalPts} muestras analizadas · Tasa central: {rateLabel}.<br />
                   {isControlled
-                    ? 'La variación observada responde exclusivamente a causas comunes. La tasa de defectos se encuentra en un estado estable y predecible.'
-                    : `Se han identificado patrones sistemáticos de causas especiales. El proceso requiere evaluación inmediata.`}
-                </div>
+                    ? 'El lote presenta exclusivamente fluctuaciones de variación natural (causas comunes). No hay patrones anormales y el comportamiento es predecible.'
+                    : `Se han detectado indicios de causas especiales de variación. Se requiere evaluar cambios repentinos, desgaste de equipos o fallas en selección manual.`}
+                </p>
               </div>
 
-              {/* DETALLE DE REGLAS DE NELSON INFRINGIDAS */}
+              {/* Alertas Nelson detalladas */}
               {activeNelsonAlerts.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
-                  <div className="print-text-dark" style={{ fontSize: 13, fontWeight: 700, color: 'var(--warning)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <AlertTriangle size={15} /> Patrones de Inestabilidad Detallados (Nelson Rules):
+                  <div className="print-text-dark" style={{ fontSize: '12.5px', fontWeight: 700, color: '#f59e0b', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={15} /> Patrones identificados (Nelson Rules):
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
                     {activeNelsonAlerts.map((alert) => (
                       <div key={alert.ruleId} className="print-card-border" style={{
-                        background: 'rgba(245,158,11,0.05)',
-                        border: '1px solid rgba(245,158,11,0.25)',
-                        borderLeft: '4px solid var(--warning)',
+                        background: 'rgba(245,158,11,0.03)',
+                        border: '1px solid rgba(245,158,11,0.15)',
+                        borderLeft: '4px solid #f59e0b',
                         borderRadius: 8,
                         padding: '12px 14px',
                       }}>
-                        <div className="print-text-dark" style={{ fontWeight: 700, fontSize: 13, color: '#f59e0b' }}>
+                        <div className="print-text-dark" style={{ fontWeight: 700, fontSize: 12.5, color: '#f59e0b' }}>
                           Regla {alert.ruleId}: {alert.name}
                         </div>
-                        <div className="print-text-muted" style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 }}>
+                        <div className="print-text-muted" style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 }}>
                           {alert.desc}
                         </div>
                         <div className="print-text-dark" style={{ fontSize: 11, marginTop: 8, fontWeight: 600 }}>
-                          Subgrupos infractores: <span style={{ fontFamily: 'JetBrains Mono', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: 4, color: 'var(--warning)' }}>{alert.subgrupos.join(', ')}</span>
+                          Subgrupos críticos: <span style={{ fontFamily: 'JetBrains Mono', color: '#f59e0b', background: 'rgba(255,255,255,0.04)', padding: '1px 5px', borderRadius: 4 }}>{alert.subgrupos.join(', ')}</span>
                         </div>
                       </div>
                     ))}
@@ -387,79 +678,113 @@ export default function AtributosPage() {
                 </div>
               )}
 
-              {/* Detalle OOC */}
+              {/* Puntos OOC */}
               {oocPts.length > 0 && (
-                <div style={{ marginBottom: 14 }}>
-                  <div className="print-text-dark" style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', marginBottom: 8 }}>Puntos fuera de los límites de control de 3σ:</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 6 }}>
+                <div style={{ marginBottom: 16 }}>
+                  <div className="print-text-dark" style={{ fontSize: '12.5px', fontWeight: 700, color: '#ef4444', marginBottom: 8 }}>Puntos con desviación superior a 3σ (Límites):</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {oocPts.map((d, i) => (
-                      <div key={i} className="print-card-border" style={{ fontSize: 12, color: 'var(--text-muted)', background: 'rgba(239,68,68,0.06)', padding: '6px 10px', borderRadius: 6, borderLeft: '3px solid #ef4444' }}>
+                      <div key={i} className="print-card-border" style={{ fontSize: '11.5px', color: 'var(--text-muted)', background: 'rgba(239,68,68,0.03)', padding: '6px 12px', borderRadius: 6, borderLeft: '3px solid #ef4444' }}>
                         <strong style={{ color: '#ef4444' }}>Subgrupo {d.sg}:</strong>{' '}
                         {result.tipo === 'p'
-                          ? `Proporción (p) = ${(d.p * 100).toFixed(2)}% > LCS (${(d.ucl * 100).toFixed(2)}%)`
-                          : `Defectos (c) = ${d.c} > LCS (${d.ucl.toFixed(2)})`}
+                          ? `Medido = ${(d.p * 100).toFixed(2)}% > LCS (${(d.ucl * 100).toFixed(2)}%)`
+                          : `Defectos = ${d.c} > LCS (${d.ucl.toFixed(2)})`}
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Recomendaciones específicas */}
+              {/* Sugerencias Agrónomas */}
               <div>
-                <div className="print-text-dark" style={{ fontSize: 13, fontWeight: 700, color: 'var(--green-light)', marginBottom: 8 }}>Recomendaciones de Acción:</div>
-                <ul className="print-text-muted" style={{ margin: 0, paddingLeft: 18, color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.8 }}>
-                  {isControlled ? (<>
-                    <li>El proceso demuestra un nivel estable de calidad.</li>
-                    <li>Use la herramienta <strong>Diagrama de Pareto</strong> para priorizar el análisis de las tipologías de defectos e iniciar proyectos Kaizen de mejora continua.</li>
-                    <li>Siga recolectando subgrupos con el esquema habitual para confirmar la consistencia.</li>
-                  </>) : (<>
-                    <li><strong style={{ color: '#ef4444' }}>Detenga e investigue de inmediato</strong> los subgrupos fuera de control.</li>
-                    <li>Abra un análisis de Ishikawa (Causa-Efecto) para desglosar la variabilidad: ¿hubo cambios en el lote de materia prima, fatiga en operarios o descalibraciones en las líneas de empaque?</li>
-                    <li>Asegúrese de corregir las causas asignables antes de recalcular los límites históricos del proceso.</li>
-                  </>)}
+                <div className="print-text-dark" style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--green-light)', marginBottom: 6 }}>Acción Recomendada:</div>
+                <ul className="print-text-muted" style={{ margin: 0, paddingLeft: 18, color: 'var(--text-muted)', fontSize: '12.5px', lineHeight: 1.8 }}>
+                  {isControlled ? (
+                    <>
+                      <li>El lote demuestra un estándar estable y predecible. Puede autorizar su empaque o distribución.</li>
+                      <li>Utilice el <strong>Diagrama de Pareto</strong> de AgroMetric para priorizar el análisis de las causas de defectos más frecuentes detectadas en los controles manuales.</li>
+                    </>
+                  ) : (
+                    <>
+                      <li><strong style={{ color: '#ef4444' }}>Contención Inmediata:</strong> Examine los subgrupos marcados fuera de control. Evite la liberación de lotes si la tasa de defectos supera la especificación tolerada del cliente.</li>
+                      <li>Inicie un <strong>Diagrama de Ishikawa</strong> con el equipo técnico para evaluar causas: ¿Hubo calibración defectuosa en separadores ópticos, plagas activas en el cuartel o fatiga en operarios de selección manual?</li>
+                    </>
+                  )}
                 </ul>
               </div>
+
             </div>
           );
         })()}
 
-        {/* Tabla (Printable conditionally) */}
+        {/* Tabla tabular completa */}
         {result && (
-          <div className={`card ${!printConfig.table ? 'no-print' : ''}`} style={{ marginTop: 16 }}>
-            <div className="section-title print-text-dark" style={{ marginBottom: 12 }}>Tabla de Datos y Rachas de Atributos</div>
-            <div className="table-container">
-              <table>
-                <thead><tr>
-                  <th>Subgrupo</th>
-                  {result.tipo === 'p' ? <><th>n</th><th>np</th><th>p</th></> : <th>c</th>}
-                  <th>LCS</th><th>LC</th><th>LCI</th><th>Estado</th><th>Nelson Activas</th>
-                </tr></thead>
+          <div className={`card ${!printConfig.table ? 'no-print' : ''}`} style={{ marginTop: 16, border: '1px solid var(--border)', borderRadius: '12px' }}>
+            <div className="section-title print-text-dark" style={{ marginBottom: 12, fontSize: '14.5px', fontWeight: 700 }}>🔍 Detalle Tabular del Control Estadístico</div>
+            
+            <div className="table-container" style={{ overflowX: 'auto', borderRadius: '8px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                <thead>
+                  <tr style={{ background: 'rgba(255, 255, 255, 0.02)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ padding: '10px 12px', textAlign: 'center' }}>Subgrupo</th>
+                    {result.tipo === 'p' ? (
+                      <>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>n</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>np</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>Proporción (p)</th>
+                      </>
+                    ) : (
+                      <th style={{ padding: '10px 12px', textAlign: 'center' }}>Defectos (c)</th>
+                    )}
+                    <th style={{ padding: '10px 12px', textAlign: 'center' }}>LCS</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center' }}>LC</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center' }}>LCI</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center' }}>Estado</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center' }}>Reglas Nelson</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {result.data.map((d, i) => {
                     const hasNelson = d.rulesViolated && d.rulesViolated.length > 0;
                     return (
-                      <tr key={i} style={d.ooc || hasNelson ? { background: 'rgba(239,68,68,0.04)' } : {}}>
-                        <td style={{ fontWeight: 600 }}>{d.sg}</td>
-                        {result.tipo === 'p' ? <>
-                          <td className="td-num">{d.n}</td>
-                          <td className="td-num">{d.np}</td>
-                          <td className="td-num">{d.p?.toFixed(4)}</td>
-                        </> : <td className="td-num">{d.c}</td>}
-                        <td className="td-num" style={{ color: '#ef4444' }}>{d.ucl?.toFixed(4)}</td>
-                        <td className="td-num" style={{ color: 'var(--green-primary)' }}>{(result.tipo === 'p' ? d.pbar : d.cbar)?.toFixed(4)}</td>
-                        <td className="td-num" style={{ color: '#ef4444' }}>{d.lcl?.toFixed(4)}</td>
-                        <td>
-                          <span className={`badge ${d.ooc ? 'badge-red' : 'badge-green'}`}>
-                            {d.ooc ? 'OOC' : 'OK'}
+                      <tr 
+                        key={i} 
+                        style={{
+                          borderBottom: '1px solid var(--border)',
+                          background: d.ooc || hasNelson ? 'rgba(239, 68, 68, 0.03)' : 'transparent',
+                          borderLeft: d.ooc || hasNelson ? '3px solid #ef4444' : '3px solid transparent'
+                        }}
+                      >
+                        <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>{d.sg}</td>
+                        {result.tipo === 'p' ? (
+                          <>
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono' }}>{d.n}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono' }}>{d.np}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono', fontWeight: 600 }}>{d.p?.toFixed(4)}</td>
+                          </>
+                        ) : (
+                          <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono', fontWeight: 600 }}>{d.c}</td>
+                        )}
+                        
+                        <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono', color: '#ef4444' }}>{d.ucl?.toFixed(4)}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono', color: 'var(--green-primary)' }}>
+                          {(result.tipo === 'p' ? d.pbar : d.cbar)?.toFixed(4)}
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'JetBrains Mono', color: '#ef4444' }}>{d.lcl?.toFixed(4)}</td>
+                        
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                          <span className={`badge ${d.ooc ? 'badge-red' : 'badge-green'}`} style={{ fontSize: '10px' }}>
+                            {d.ooc ? 'F. CONTROL' : 'ESTABLE'}
                           </span>
                         </td>
-                        <td>
+                        
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                           {hasNelson ? (
-                            <span className="badge badge-yellow" style={{ fontSize: 10 }}>
+                            <span className="badge badge-yellow" style={{ fontSize: '10px', fontWeight: 700 }}>
                               Reglas: {d.rulesViolated.join(', ')}
                             </span>
                           ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Ninguna</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>
                           )}
                         </td>
                       </tr>
@@ -472,64 +797,70 @@ export default function AtributosPage() {
         )}
       </div>
 
-      {/* ── CONSTRUCTOR DE REPORTE PDF MODAL ── */}
+      {/* MODAL CONFIGURACIÓN IMPRESIÓN */}
       {isReportModalOpen && (
         <div className="modal-overlay no-print" style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-          padding: 20, backdropFilter: 'blur(4px)'
+          background: 'rgba(0, 0, 0, 0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          padding: 20, backdropFilter: 'blur(3px)'
         }}>
           <div className="card modal-content" style={{
-            width: '100%', maxWidth: '520px',
+            width: '100%', maxWidth: '500px',
             border: '1px solid var(--border)', background: 'var(--bg-card)',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.6)'
+            padding: '24px', borderRadius: '12px'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Settings size={20} style={{ color: 'var(--green-light)' }} />
-                <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--green-light)', margin: 0 }}>
-                  Constructor de Reporte PDF
+                <Settings size={18} style={{ color: 'var(--green-light)' }} />
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--green-light)', margin: 0 }}>
+                  Personalizar Reporte PDF
                 </h3>
               </div>
-              <button className="btn btn-secondary" style={{ padding: '6px', borderRadius: '50%' }} onClick={() => setIsReportModalOpen(false)}>
-                <X size={18} />
+              <button className="btn btn-secondary" style={{ padding: '6px', borderRadius: '50%', minWidth: 'auto' }} onClick={() => setIsReportModalOpen(false)}>
+                <X size={16} />
               </button>
             </div>
 
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.5 }}>
-              Selecciona los componentes que deseas inyectar en tu reporte de control de atributos. Al imprimir se filtrarán de inmediato.
+            <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
+              Seleccione los elementos que formarán parte del diagnóstico imprimible del control de atributos.
             </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 22 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
               {[
-                { key: 'info', title: 'Ficha Técnica y Límites de Control', desc: 'Metadatos del producto, atributo auditado, tasa de control media y límites calculados.' },
-                { key: 'chart', title: result?.tipo === 'p' ? 'Gráfico de Proporciones (P)' : 'Gráfico de Defectos por Unidad (C)', desc: 'Visualización del comportamiento histórico con bandas de control y alertas.' },
-                { key: 'nelson', title: 'Diagnóstico Estadístico de Nelson Rules', desc: 'Identificación detallada de inestabilidades, rachas y recomendaciones de acción.' },
-                { key: 'table', title: 'Matriz Tabular y Resultados', desc: 'Listado completo por subgrupos con los valores numéricos y el estado individual.' }
+                { key: 'info', title: 'Metadatos y Resumen General', desc: 'Ficha técnica del lote, inspector, tasa central y límites calculados.' },
+                { key: 'chart', title: 'Gráfica Interactiva de Control', desc: 'Visualización de la tendencia temporal de defectos con límites sigma.' },
+                { key: 'nelson', title: 'Diagnóstico Nelson Rules y Consejos', desc: 'Alertas de inestabilidad activa y sugerencias de acciones correctivas.' },
+                { key: 'table', title: 'Matriz Tabular Completa', desc: 'Tabulación detallada de todos los subgrupos e infracciones.' }
               ].map(opt => (
                 <label key={opt.key} style={{
                   display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 12px',
-                  background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
-                  borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s'
-                }} className="hover-bg-card-hover">
-                  <input type="checkbox" checked={printConfig[opt.key]} style={{ marginTop: 3, accentColor: 'var(--green-primary)' }}
-                    onChange={e => setPrintConfig(c => ({ ...c, [opt.key]: e.target.checked }))} />
+                  background: 'rgba(255, 255, 255, 0.01)', border: '1px solid var(--border)',
+                  borderRadius: 8, cursor: 'pointer'
+                }}>
+                  <input 
+                    type="checkbox" 
+                    checked={printConfig[opt.key]} 
+                    onChange={e => setPrintConfig(c => ({ ...c, [opt.key]: e.target.checked }))} 
+                    style={{ marginTop: 3, accentColor: 'var(--green-primary)' }}
+                  />
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{opt.title}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{opt.desc}</div>
+                    <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)' }}>{opt.title}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 2 }}>{opt.desc}</div>
                   </div>
                 </label>
               ))}
             </div>
 
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: 14 }}>
               <button className="btn btn-secondary" onClick={() => setIsReportModalOpen(false)}>
                 Cancelar
               </button>
-              <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={handlePrint}>
-                <Printer size={16} /> Generar PDF / Imprimir
+              
+              <button className="btn btn-primary" onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Printer size={15} /> Confirmar e Imprimir / PDF
               </button>
             </div>
+
           </div>
         </div>
       )}
@@ -578,11 +909,6 @@ export default function AtributosPage() {
             fill: #475569 !important;
             font-size: 10px !important;
           }
-        }
-        
-        .hover-bg-card-hover:hover {
-          background: var(--bg-card-hover) !important;
-          border-color: var(--border-light) !important;
         }
       `}</style>
     </>
