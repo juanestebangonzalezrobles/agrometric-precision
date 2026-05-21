@@ -61,6 +61,37 @@ Tomas 5 aguacates cada hora (subgrupo n=5), mides el peso de cada uno, calculas 
     `,
   },
   {
+    id: 'xbars',
+    icon: '📈',
+    title: 'Gráficos X̄-S (Desviación Estándar)',
+    color: '#059669',
+    content: `
+Los gráficos **X̄-S** son el estándar de oro para el control de variables continuas cuando el tamaño de subgrupo es mediano o grande. A diferencia de los gráficos X̄-R (que usan el Rango), los gráficos X̄-S utilizan la **Desviación Estándar (S)** para medir la variabilidad del proceso de forma mucho más precisa.
+
+### ¿Cuándo preferir X̄-S sobre X̄-R?
+El rango es sumamente fácil de calcular a mano, pero pierde mucha eficiencia conforme el tamaño del subgrupo (n) aumenta. La desviación estándar considera *todos* los datos del subgrupo, no solo el máximo y el mínimo.
+
+| Criterio | Gráfico X̄-R | Gráfico X̄-S |
+|----------|-------------|-------------|
+| Tamaño de subgrupo (n) | Pequeño (n ≤ 10) | Grande (n > 10, recomendado) |
+| Eficiencia de cálculo | Baja en muestras grandes | Alta (aprovecha todos los datos) |
+| Sensibilidad a atípicos | Muy afectado por extremos | Más robusto y representativo |
+
+### Fórmulas del Gráfico X̄-S:
+**Gráfico X̄ (Media):** Monitorea el promedio del proceso.
+- Línea Central (LC) = X̄̄ (gran media)
+- LCS = X̄̄ + A₃ × S̄
+- LCI = X̄̄ − A₃ × S̄
+
+**Gráfico S (Desviación Estándar):** Monitorea la variabilidad interna.
+- Línea Central (LC) = S̄ (desviación estándar promedio)
+- LCS = B₄ × S̄
+- LCI = B₃ × S̄
+
+*Nota:* Las constantes estadísticas A₃, B₃ y B₄ se obtienen de tablas normalizadas según el tamaño n del subgrupo. Además, la desviación estándar real del proceso se estima como σ = S̄ / c₄.
+    `,
+  },
+  {
     id: 'atributos',
     icon: '🔢',
     title: 'Gráficos de Atributos (P, NP, C, U)',
@@ -90,6 +121,34 @@ Los gráficos de **atributos** se usan cuando NO mides un número continuo, sino
 ### Interpretación:
 - Un punto por encima del LCS indica que en ese subgrupo hubo **más defectos de lo esperado** → investigar
 - Un punto muy por debajo del LCI puede indicar una **mejora real** en el proceso → ¡estudiar esa causa!
+    `,
+  },
+  {
+    id: 'nelson',
+    icon: '🚨',
+    title: 'Reglas de Nelson e Inestabilidad',
+    color: '#dc2626',
+    content: `
+Las **Reglas de Nelson** son un conjunto de 6 reglas estadísticas aplicadas en control de calidad para identificar inestabilidad, tendencias o "causas especiales" de variación en los gráficos de control.
+
+Para aplicarlas, el gráfico de control se divide en tres zonas a ambos lados de la media (Línea Central):
+- **Zona A (Externa):** Más allá de ±2σ hasta ±3σ
+- **Zona B (Media):** Más allá de ±1σ hasta ±2σ
+- **Zona C (Interna):** Desde la media hasta ±1σ
+
+### Las 6 Reglas de Nelson Implementadas:
+
+| Regla | Nombre y Descripción | Causa Típica Posible |
+|-------|----------------------|----------------------|
+| **Regla 1** | Un punto fuera de los límites de control (±3σ) | Perturbación grave, error de medida |
+| **Regla 2** | 9 puntos consecutivos del mismo lado de la media | Cambio sostenido en el promedio |
+| **Regla 3** | 6 puntos consecutivos en orden ascendente o descendente | Desgaste de herramienta, calentamiento |
+| **Regla 4** | 14 puntos alternando consecutivamente arriba y abajo | Oscilación, mezcla de dos poblaciones |
+| **Regla 5** | 2 de 3 puntos consecutivos en Zona A o más allá (±2σ) | Advertencia de cambio de nivel |
+| **Regla 6** | 4 de 5 puntos consecutivos en Zona B o más allá (±1σ) | Variación sistemática del proceso |
+
+### Diagnóstico de Causas Especiales:
+Cuando se activa una regla de Nelson, no significa necesariamente que el producto esté defectuoso, sino que el **proceso ha cambiado** y ya no es estadísticamente estable. Esto requiere una detención para investigar e identificar la causa raíz antes de que se produzcan unidades fuera de especificación.
     `,
   },
   {
@@ -127,6 +186,36 @@ Compara los cuantiles teóricos de una normal con los cuantiles reales de tus da
 - Verificar si hay datos atípicos (outliers) y eliminar si hay causa especial
 - Aplicar transformación matemática (logaritmo, raíz cuadrada)
 - Usar métodos no paramétricos alternativos
+    `,
+  },
+  {
+    id: 'boxcox',
+    icon: '🔄',
+    title: 'Transformación Box-Cox',
+    color: '#3b82f6',
+    content: `
+Cuando los datos recolectados no siguen una distribución normal (fallan la prueba de Anderson-Darling con valor-p ≤ 0.05), no podemos calcular de forma directa y confiable la capacidad del proceso (Cp, Cpk). Para solucionarlo, aplicamos la **Transformación Box-Cox**.
+
+### ¿Qué hace la transformación?
+Box-Cox es una transformación matemática paramétrica que busca un valor óptimo para un parámetro llamado **Lambda (λ)**. Modifica cada dato original (Y) mediante una fórmula de potencia para estabilizar la varianza y aproximar los datos a una curva normal perfecta.
+
+### Fórmula de Transformación:
+- Si λ ≠ 0: W = (Y^λ − 1) / λ
+- Si λ = 0: W = ln(Y) (logaritmo natural)
+
+### Barrido del λ Óptimo:
+Nuestra plataforma realiza un barrido automático de Lambdas en un rango de -2 a 2. Para cada λ, calcula el estadístico de Anderson-Darling y selecciona el λ que maximiza el valor-p (es decir, el que hace que los datos transformados sean **lo más normales posible**).
+
+### Lambdas Comunes en Ingeniería:
+| Valor de λ | Transformación Equivalente | Ejemplo de Aplicación |
+|------------|----------------------------|-----------------------|
+| **λ = 1.0** | Ninguna (Datos originales) | Ya son normales |
+| **λ = 0.5** | Raíz cuadrada (√Y) | Datos de conteos y áreas |
+| **λ = 0.0** | Logaritmo natural (ln Y) | Datos sesgados a la derecha |
+| **λ = -1.0** | Inversa (1/Y) | Tiempos de ciclo o espera |
+
+### Capacidad con Datos Transformados:
+Una vez transformados los datos y aprobado el supuesto de normalidad (valor-p > 0.05 en los datos transformados), los límites de especificación (LIE y LSE) se transforman usando el mismo λ óptimo. Los índices Cp, Cpk, Pp y Ppk se calculan en base a esta escala transformada, garantizando precisión absoluta en el reporte.
     `,
   },
   {
@@ -184,7 +273,7 @@ Con Cpk = 1.33 esperamos aprox. 63 defectos por millón de unidades producidas. 
 El Diagrama de Pareto se basa en el **Principio de Pareto** (también llamado regla 80/20): en la mayoría de los problemas, el **80% de los defectos** son causados por solo el **20% de las causas**.
 
 ### ¿Para qué sirve?
-Ayuda a **priorizar** en qué problemas concentrar los esfuerzos de mejora. En lugar de atacar todos los defectos al mismo tiempo (lo que es ineficiente), identificamos los "pocos vitales" que generan la mayoría del problema.
+Ayuda a **priorizar** en qué problemas concentrar los esfuerzos de mejora. In lugar de atacar todos los defectos al mismo tiempo (lo que es ineficiente), identificamos los "pocos vitales" que generan la mayoría del problema.
 
 ### Cómo leer el gráfico:
 1. **Barras (eje izquierdo):** Frecuencia de cada tipo de defecto, ordenado de mayor a menor
@@ -208,6 +297,32 @@ Para la Manzanilla Alemana se registraron 7 tipos de defectos. El Pareto muestra
     `,
   },
   {
+    id: 'ishikawa',
+    icon: '🐟',
+    title: 'Diagrama de Ishikawa (6M)',
+    color: '#a855f7',
+    content: `
+El **Diagrama de Ishikawa**, también conocido como diagrama de espina de pescado o de causa-efecto, es una herramienta estructurada para identificar, organizar y analizar de forma visual todas las posibles causas raíz de un problema específico o desviación de calidad.
+
+### El Método de las 6M:
+Para asegurar que se analicen todas las dimensiones posibles del proceso, las causas se agrupan en **6 categorías clave (las 6M)**:
+
+1. **Mano de Obra (Personal):** Competencia del operario, entrenamiento, fatiga, apego a los procedimientos, supervisión.
+2. **Maquinaria (Equipos):** Calibración de básculas, desgaste de herramientas, mantenimiento de tractores o sistemas de riego.
+3. **Materiales:** Calidad de las semillas, fertilizantes, humedad de las cajas, homogeneidad de la materia prima, insumos.
+4. **Métodos:** Procedimientos de cosecha, técnicas de muestreo, velocidad de la línea de empaque, estándares de trabajo.
+5. **Medición:** Precisión del instrumento, calibración de sensores de temperatura, diferencias de criterio entre inspectores.
+6. **Medio Ambiente:** Clima externo, humedad relativa en almacén, exposición al sol, temperatura del campo, iluminación.
+
+### Pasos para realizar un análisis de Causa-Efecto:
+1. **Definir el Efecto:** Escribir el problema claramente en la "cabeza" del pescado (ej: "Alto % de aguacates con daños en piel").
+2. **Lluvia de ideas:** El equipo multidisciplinario propone posibles causas raíz.
+3. **Clasificar en las 6M:** Colocar cada causa en la espina correspondiente.
+4. **Preguntar "¿Por qué?" consecutivamente:** Para profundizar hasta llegar a la verdadera causa raíz de cada espina.
+5. **Priorizar y corregir:** Tomar acciones sobre las causas más probables y medir el impacto con los gráficos de control.
+    `,
+  },
+  {
     id: 'muestras',
     icon: '📝',
     title: 'Registro de Muestras y Trazabilidad',
@@ -216,7 +331,7 @@ Para la Manzanilla Alemana se registraron 7 tipos de defectos. El Pareto muestra
 La **trazabilidad** es la capacidad de rastrear el origen y recorrido de un producto. En control de calidad es fundamental para poder investigar causas especiales cuando aparecen.
 
 ### ¿Qué información registrar?
-Para que el análisis sea confiable y auditables, cada muestreo debe incluir:
+Para que el análisis sea confiable y auditable, cada muestreo debe incluir:
 
 | Campo | ¿Por qué importa? |
 |-------|------------------|
@@ -247,6 +362,35 @@ Con menos de 25 subgrupos, los límites de control calculados son poco confiable
     `,
   },
   {
+    id: 'pdf_reports',
+    icon: '📋',
+    title: 'Constructor de Reportes PDF',
+    color: '#06b6d4',
+    content: `
+La plataforma cuenta con un **Constructor Visual de Reportes** que permite documentar los análisis de control de calidad de forma profesional y personalizada para su posterior entrega a gerencia o clientes.
+
+### ¿Cómo funciona la Selección de Componentes?
+Antes de exportar el PDF, se abre un panel interactivo que te permite elegir qué partes del análisis actual deseas incluir en el documento:
+- **Metadatos y General:** Nombre del analista, fecha del lote, producto y límites de especificación.
+- **Gráficos de Control:** Visualización limpia de la media y la variabilidad (X̄-R, X̄-S o Atributos).
+- **Diagnóstico y Alertas:** Listado explícito de las Reglas de Nelson que se activaron durante el período.
+- **Tabla de Muestras:** Matriz completa de las mediciones registradas para plena auditoría.
+
+### Uso del Diálogo de Impresión Nativo:
+Para evitar los errores comunes de renderizado, pérdida de fuentes y pixelado de gráficos SVG que sufren las librerías web tradicionales, la app utiliza un motor optimizado basado en el diálogo de impresión nativo del navegador (window.print()).
+
+### Pasos para guardar como PDF perfecto:
+1. Haz clic en **"Generar Reporte PDF"** en la página de análisis.
+2. Selecciona las casillas de los componentes que deseas incluir en el modal.
+3. Presiona el botón **"Imprimir / Guardar PDF"**.
+4. En la ventana emergente de impresión de tu navegador (Chrome, Edge, Safari, etc.):
+   - Selecciona **"Guardar como PDF"** en la sección de Destino.
+   - En *Más configuraciones*, asegúrate de marcar **"Gráficos de fondo"** para que los colores premium de AgroMetric se vean espectaculares.
+   - Desmarca *Cabeceras y pies de página* para una presentación limpia sin URLs del navegador.
+5. Guarda el archivo en tu dispositivo. ¡Listo para compartir!
+    `,
+  },
+  {
     id: 'glosario',
     icon: '📚',
     title: 'Glosario de Términos',
@@ -254,11 +398,13 @@ Con menos de 25 subgrupos, los límites de control calculados son poco confiable
     content: `
 ### Términos clave ordenados alfabéticamente:
 
-**A₂, D₃, D₄:** Constantes tabuladas que dependen del tamaño de subgrupo (n). Se usan para calcular los límites de control en el gráfico X̄-R.
+**A₂, A₃, B₃, B₄:** Constantes tabuladas que dependen del tamaño de subgrupo (n). Se usan para calcular los límites de control en los gráficos X̄-R y X̄-S.
 
 **Anderson-Darling (A²):** Prueba estadística para evaluar si los datos siguen una distribución normal. Un valor-p > 0.05 indica normalidad.
 
 **Atributo:** Característica de calidad que se clasifica (defectuoso/bueno, número de defectos). Contrario a "variable".
+
+**Box-Cox:** Transformación matemática paramétrica que busca un λ óptimo para normalizar datos no normales y estabilizar su varianza.
 
 **Causa común:** Variación aleatoria e inherente al proceso. Normal, no requiere intervención.
 
@@ -272,6 +418,8 @@ Con menos de 25 subgrupos, los límites de control calculados son poco confiable
 
 **Distribución normal:** Distribución simétrica en forma de campana. Fundamental en estadística.
 
+**Ishikawa (6M):** Diagrama de causa-efecto que agrupa las causas raíz de un problema en 6 dimensiones principales (Mano de obra, Maquinaria, Materiales, Métodos, Medición, Medio ambiente).
+
 **LC (Línea Central):** La media del estadístico graficado. Es la línea central del gráfico de control.
 
 **LCI (Límite de Control Inferior):** LC − 3σ. Límite inferior del gráfico de control.
@@ -281,6 +429,8 @@ Con menos de 25 subgrupos, los límites de control calculados son poco confiable
 **LIE:** Límite Inferior de Especificación. Definido por el cliente o la norma.
 
 **LSE:** Límite Superior de Especificación. Definido por el cliente o la norma.
+
+**Nelson (Reglas):** Conjunto de 6 reglas estadísticas aplicadas sobre gráficos de control para detectar inestabilidad y causas especiales.
 
 **OOC (Out of Control):** Punto fuera de control. Un punto que supera LCS o LCI.
 
