@@ -1,5 +1,6 @@
 'use client';
 import './globals.css';
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -15,6 +16,7 @@ import {
   Download,
   BookOpen
 } from 'lucide-react';
+import { aguacatePeso, aloeAltura, manzanillaP, tomateDefectos } from '../lib/data';
 
 const navItems = [
   { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -72,6 +74,106 @@ function Sidebar() {
 }
 
 export default function RootLayout({ children }) {
+  useEffect(() => {
+    try {
+      const STORAGE_KEY = 'agrometric_registros';
+      const raw = localStorage.getItem(STORAGE_KEY);
+      let loaded = [];
+      if (raw) {
+        loaded = JSON.parse(raw);
+      }
+      if (!Array.isArray(loaded)) loaded = [];
+
+      // Sembramos los 4 registros históricos de referencia si no existen en localStorage
+      const hasSeeded = loaded.some(r => r && r.id && r.id.startsWith('seeded_'));
+      if (!hasSeeded) {
+        const seededRecords = [
+          {
+            id: 'seeded_aguacate',
+            producto: 'Aguacate Hass',
+            tipo: 'Fruta',
+            variableName: 'Peso',
+            unidad: 'g',
+            analista: 'Carlos Mendoza',
+            fecha: '2026-05-01',
+            lse: '280',
+            lie: '180',
+            lseNum: 280,
+            lieNum: 180,
+            subgruposData: aguacatePeso.subgrupos,
+            isAtributo: false,
+            tipoGrafico: 'XR',
+            estado: 'Analizado',
+            notes: 'Muestra histórica de control de variables (peso de frutos).'
+          },
+          {
+            id: 'seeded_aloe',
+            producto: 'Aloe Vera',
+            tipo: 'Planta Medicinal',
+            variableName: 'Altura de Planta',
+            unidad: 'cm',
+            analista: 'Laura Gómez',
+            fecha: '2026-05-05',
+            lse: '55',
+            lie: '25',
+            lseNum: 55,
+            lieNum: 25,
+            subgruposData: aloeAltura.subgrupos,
+            isAtributo: false,
+            tipoGrafico: 'XR',
+            estado: 'Analizado',
+            notes: 'Muestra histórica de control de variables (altura de plantas).'
+          },
+          {
+            id: 'seeded_manzanilla',
+            producto: 'Manzanilla Alemana',
+            tipo: 'Planta Medicinal',
+            variableName: 'Flores con defectos',
+            unidad: '',
+            analista: 'Ana Torres',
+            fecha: '2026-05-10',
+            lse: '-',
+            lie: '-',
+            lseNum: null,
+            lieNum: null,
+            subgruposData: manzanillaP.subgrupos,
+            isAtributo: true,
+            tipoGrafico: 'p',
+            estado: 'Analizado',
+            notes: 'Muestra histórica de control de atributos (flores defectuosas).'
+          },
+          {
+            id: 'seeded_tomate',
+            producto: 'Tomate Chonto',
+            tipo: 'Hortaliza',
+            variableName: 'Manchas / Lesiones',
+            unidad: '',
+            analista: 'Pedro Rivas',
+            fecha: '2026-05-12',
+            lse: '-',
+            lie: '-',
+            lseNum: null,
+            lieNum: null,
+            subgruposData: tomateDefectos.subgrupos,
+            isAtributo: true,
+            tipoGrafico: 'c',
+            estado: 'Analizado',
+            notes: 'Muestra histórica de control de atributos (defectos por lote).'
+          }
+        ];
+
+        // Combinamos preservando cualquier registro propio que el usuario ya haya cargado
+        const cleanExisting = loaded.filter(r => r && !r.id.startsWith('seeded_'));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify([...cleanExisting, ...seededRecords]));
+        
+        // Disparar evento para componentes que ya estén cargados
+        window.dispatchEvent(new Event('storage'));
+      }
+    } catch (e) {
+      console.error('Error al sembrar registros históricos:', e);
+    }
+  }, []);
+
   return (
     <html lang="es">
       <head>
