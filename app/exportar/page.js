@@ -215,6 +215,11 @@ export default function ExportarPage() {
   const [records, setRecords] = useState([]);
   const [mounted, setMounted] = useState(false);
 
+  // Estados para múltiples hojas de Excel
+  const [sheetNames, setSheetNames] = useState([]);
+  const [selectedSheet, setSelectedSheet] = useState('');
+  const [workbookObj, setWorkbookObj] = useState(null);
+
   useEffect(() => {
     setMounted(true);
     setRecords(getSafeRecords());
@@ -539,9 +544,54 @@ export default function ExportarPage() {
     }
   };
 
+  const loadExcelSheet = (workbook, sheetName) => {
+    try {
+      const worksheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+      if (rows.length === 0) {
+        setParseError(`La hoja "${sheetName}" está vacía.`);
+        setParsedData(null);
+        return;
+      }
+      
+      const headers = rows[0].map(h => String(h).trim());
+      const parsedRows = rows.slice(1).map(r => {
+        const obj = {};
+        headers.forEach((h, i) => {
+          const cellVal = r[i];
+          obj[h] = cellVal !== undefined && cellVal !== null ? String(cellVal).trim() : '';
+        });
+        return obj;
+      }).filter(r => Object.values(r).some(v => v));
+      
+      setParsedData({ headers, rows: parsedRows });
+      setParseError('');
+      setShowSuccess(false);
+      setImportedRecord(null);
+    } catch (err) {
+      console.error(err);
+      setParseError(`Error al leer la hoja "${sheetName}" del archivo Excel.`);
+    }
+  };
+
+  const handleSheetChange = (sheetName) => {
+    setSelectedSheet(sheetName);
+    if (workbookObj) {
+      loadExcelSheet(workbookObj, sheetName);
+    }
+  };
+
   const handleFile = (file) => {
     if (!file) return;
     setImportFile(file);
+    
+    // Reiniciar estados de hoja
+    setSheetNames([]);
+    setSelectedSheet('');
+    setWorkbookObj(null);
+    setParseError('');
+    setParsedData(null);
+    
     const extension = file.name.split('.').pop().toLowerCase();
     
     if (extension === 'xlsx' || extension === 'xls') {
@@ -550,29 +600,18 @@ export default function ExportarPage() {
         try {
           const data = new Uint8Array(e.target.result);
           const workbook = XLSX.read(data, { type: 'array' });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
+          const names = workbook.SheetNames;
           
-          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-          if (rows.length === 0) {
-            setParseError('El archivo Excel está vacío.');
+          if (!names || names.length === 0) {
+            setParseError('El archivo Excel no contiene hojas de cálculo.');
             return;
           }
           
-          const headers = rows[0].map(h => String(h).trim());
-          const parsedRows = rows.slice(1).map(r => {
-            const obj = {};
-            headers.forEach((h, i) => {
-              const cellVal = r[i];
-              obj[h] = cellVal !== undefined && cellVal !== null ? String(cellVal).trim() : '';
-            });
-            return obj;
-          }).filter(r => Object.values(r).some(v => v));
+          setWorkbookObj(workbook);
+          setSheetNames(names);
+          setSelectedSheet(names[0]);
           
-          setParsedData({ headers, rows: parsedRows });
-          setParseError('');
-          setShowSuccess(false);
-          setImportedRecord(null);
+          loadExcelSheet(workbook, names[0]);
         } catch (err) {
           console.error(err);
           setParseError('Error al leer el archivo Excel (.xlsx/.xls). Asegúrese de que no esté dañado.');
@@ -858,6 +897,47 @@ export default function ExportarPage() {
                 <div className="interpretation danger" style={{ marginTop: 12 }}>{parseError}</div>
               )}
             </div>
+
+            {/* Selector de Hojas si hay múltiples hojas */}
+            {sheetNames.length > 1 && (
+              <div className="card" style={{ 
+                marginBottom: 16, 
+                border: '1px solid rgba(16, 185, 129, 0.2)', 
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.04) 0%, rgba(16, 185, 129, 0.01) 100%)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                  <div>
+                    <h3 className="section-title" style={{ margin: 0, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6, color: '#ffffff' }}>
+                      <FolderOpen size={16} style={{ color: 'var(--green-light)' }} />
+                      Múltiples Hojas Detectadas
+                    </h3>
+                    <p style={{ margin: '4px 0 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                      Este libro de Excel contiene varias hojas. Elige con cuál deseas trabajar:
+                    </p>
+                  </div>
+                  <div style={{ minWidth: 200 }}>
+                    <select
+                      className="form-select"
+                      value={selectedSheet}
+                      onChange={e => handleSheetChange(e.target.value)}
+                      style={{ 
+                        padding: '10px 14px', 
+                        fontSize: 13, 
+                        borderColor: 'rgba(16, 185, 129, 0.4)', 
+                        background: '#151c18',
+                        color: '#ffffff',
+                        fontWeight: 600,
+                        borderRadius: 8
+                      }}
+                    >
+                      {sheetNames.map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Modal de Éxito Multianálisis */}
             {showSuccess && importedRecord && (
@@ -1164,7 +1244,14 @@ export default function ExportarPage() {
                     <button className="btn btn-primary" onClick={handleSaveImport}>
                        Guardar Muestra y Analizar
                     </button>
-                    <button className="btn btn-secondary" onClick={() => { setParsedData(null); setImportFile(null); }}>
+                    <button className="btn btn-secondary" onClick={() => { 
+                      setParsedData(null); 
+                      setImportFile(null);
+                      setSheetNames([]);
+                      setSelectedSheet('');
+                      setWorkbookObj(null);
+                      setParseError('');
+                    }}>
                       Limpiar
                     </button>
                   </div>
