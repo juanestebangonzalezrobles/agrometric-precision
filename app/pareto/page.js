@@ -1,6 +1,10 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
+import { Save, Trash2, Plus, FolderOpen, RefreshCw } from 'lucide-react';
+
+const PARETO_STORAGE_KEY = 'agrometric_paretos';
+const PARETO_DRAFT_KEY = 'agrometric_pareto_draft';
 
 function buildPareto(defectos) {
   const total = defectos.reduce((a, d) => a + d.count, 0);
@@ -18,22 +22,178 @@ const CustomBar = (props) => {
   return <rect x={x} y={y} width={width} height={height} fill={isVital ? 'var(--green-primary)' : 'var(--border-light)'} rx={3} />;
 };
 
+// --- Utilidades de localStorage ---
+function loadSavedParetos() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(PARETO_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+function saveParetoList(list) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(PARETO_STORAGE_KEY, JSON.stringify(Array.isArray(list) ? list : []));
+  } catch (e) { console.error('Error guardando Paretos:', e); }
+}
+
+function loadDraft() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(PARETO_DRAFT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+function saveDraft(producto, customRows) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(PARETO_DRAFT_KEY, JSON.stringify({ producto, customRows }));
+  } catch (e) { console.error('Error guardando borrador Pareto:', e); }
+}
+
 export default function ParetoPage() {
-  const [selected, setSelected] = useState('custom');
-  const [customMode, setCustomMode] = useState(true);
+  const [mounted, setMounted] = useState(false);
+  const [savedParetos, setSavedParetos] = useState([]);
+  const [activePreset, setActivePreset] = useState('draft'); // 'draft' or 'saved_0', 'saved_1', etc.
   const [customRows, setCustomRows] = useState([{ tipo: '', count: '' }]);
   const [data, setData] = useState([]);
   const [producto, setProducto] = useState('');
 
-  const handleCustom = () => {
+  // Montaje e hidratación segura
+  useEffect(() => {
+    setMounted(true);
+    const saved = loadSavedParetos();
+    setSavedParetos(saved);
+
+    // Recuperar borrador si existe
+    const draft = loadDraft();
+    if (draft) {
+      setProducto(draft.producto || '');
+      if (Array.isArray(draft.customRows) && draft.customRows.length > 0) {
+        setCustomRows(draft.customRows);
+        // Auto-generar si hay al menos 2 filas válidas
+        const validRows = draft.customRows.filter(r => r.tipo && !isNaN(+r.count) && +r.count > 0);
+        if (validRows.length >= 2) {
+          setData(buildPareto(validRows.map(r => ({ tipo: r.tipo, count: +r.count }))));
+        }
+      }
+    }
+  }, []);
+
+  // Auto-guardar borrador en cada cambio (solo en modo borrador)
+  useEffect(() => {
+    if (!mounted) return;
+    if (activePreset === 'draft') {
+      saveDraft(producto, customRows);
+    }
+  }, [producto, customRows, mounted, activePreset]);
+
+  const handleGenerate = useCallback(() => {
     const rows = customRows.filter(r => r.tipo && !isNaN(+r.count) && +r.count > 0);
     if (rows.length < 2) return alert('Ingrese al menos 2 categorías con conteos');
     setData(buildPareto(rows.map(r => ({ tipo: r.tipo, count: +r.count }))));
+  }, [customRows]);
+
+  const handleSave = () => {
+    const rows = customRows.filter(r => r.tipo && !isNaN(+r.count) && +r.count > 0);
+    if (rows.length < 2) return alert('Ingrese al menos 2 categorías con conteos válidos para guardar.');
+    
+    const entry = {
+      id: `pareto_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      producto: producto || 'Sin Nombre',
+      customRows: customRows.filter(r => r.tipo || r.count),
+      fecha: new Date().toISOString().split('T')[0],
+    };
+
+    if (activePreset.startsWith('saved_')) {
+      // Actualizar el existente
+      const idx = parseInt(activePreset.replace('saved_', ''));
+      const next = [...savedParetos];
+      if (next[idx]) {
+        next[idx] = { ...next[idx], producto: entry.producto, customRows: entry.customRows, fecha: entry.fecha };
+        setSavedParetos(next);
+        saveParetoList(next);
+        alert('✅ Análisis de Pareto actualizado correctamente.');
+      }
+    } else {
+      // Guardar nuevo
+      const next = [...savedParetos, entry];
+      setSavedParetos(next);
+      saveParetoList(next);
+      setActivePreset(`saved_${next.length - 1}`);
+      alert('✅ Análisis de Pareto guardado en la biblioteca.');
+    }
+  };
+
+  const handleDelete = (idx) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar este análisis de Pareto guardado?')) return;
+    const next = savedParetos.filter((_, i) => i !== idx);
+    setSavedParetos(next);
+    saveParetoList(next);
+    // Volver al borrador
+    setActivePreset('draft');
+    const draft = loadDraft();
+    if (draft) {
+      setProducto(draft.producto || '');
+      setCustomRows(draft.customRows || [{ tipo: '', count: '' }]);
+    } else {
+      setProducto('');
+      setCustomRows([{ tipo: '', count: '' }]);
+    }
+    setData([]);
+  };
+
+  const handleSelectPreset = (key) => {
+    setActivePreset(key);
+    if (key === 'draft') {
+      const draft = loadDraft();
+      if (draft) {
+        setProducto(draft.producto || '');
+        setCustomRows(draft.customRows || [{ tipo: '', count: '' }]);
+        const validRows = (draft.customRows || []).filter(r => r.tipo && !isNaN(+r.count) && +r.count > 0);
+        if (validRows.length >= 2) {
+          setData(buildPareto(validRows.map(r => ({ tipo: r.tipo, count: +r.count }))));
+        } else {
+          setData([]);
+        }
+      } else {
+        setProducto('');
+        setCustomRows([{ tipo: '', count: '' }]);
+        setData([]);
+      }
+    } else if (key.startsWith('saved_')) {
+      const idx = parseInt(key.replace('saved_', ''));
+      const entry = savedParetos[idx];
+      if (entry) {
+        setProducto(entry.producto || '');
+        setCustomRows(entry.customRows || [{ tipo: '', count: '' }]);
+        const validRows = (entry.customRows || []).filter(r => r.tipo && !isNaN(+r.count) && +r.count > 0);
+        if (validRows.length >= 2) {
+          setData(buildPareto(validRows.map(r => ({ tipo: r.tipo, count: +r.count }))));
+        } else {
+          setData([]);
+        }
+      }
+    }
   };
 
   const vital = data.filter(d => d.acumulado <= 80.5);
   const trivial = data.filter(d => d.acumulado > 80.5);
   const total = data.reduce((a, d) => a + d.count, 0);
+
+  if (!mounted) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 16 }}>
+        <RefreshCw className="animate-spin" size={40} style={{ color: 'var(--green-light)' }} />
+        <div style={{ color: 'var(--text-muted)', fontSize: 14, fontFamily: 'Outfit, sans-serif' }}>Cargando biblioteca de Pareto...</div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -42,19 +202,67 @@ export default function ParetoPage() {
           <div className="header-title">Diagrama de Pareto</div>
           <div className="header-subtitle">Regla 80/20 — Identificar defectos vitales</div>
         </div>
-        <button className="btn btn-secondary no-print" onClick={() => window.print()}>
-          Imprimir Reporte
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {data.length > 0 && (
+            <button className="btn btn-secondary no-print" onClick={() => window.print()}>
+              Imprimir Reporte
+            </button>
+          )}
+        </div>
       </div>
       <div className="page-content fade-in">
 
-        {/* Selector */}
+        {/* Selector de Presets / Biblioteca */}
+        <div className="card no-print" style={{ marginBottom: 16, border: '1px solid var(--border)', borderRadius: '12px' }}>
+          <div className="section-title" style={{ marginBottom: 12, fontSize: '14.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FolderOpen size={16} style={{ color: 'var(--green-light)' }} />
+            Biblioteca de Análisis de Pareto
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: savedParetos.length === 0 ? 0 : 8 }}>
+            <button 
+              className={`btn ${activePreset === 'draft' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => handleSelectPreset('draft')}
+              style={{ fontSize: '12px', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <Plus size={13} /> Borrador Actual
+            </button>
+            {savedParetos.map((entry, i) => (
+              <div key={entry.id || i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button
+                  className={`btn ${activePreset === `saved_${i}` ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => handleSelectPreset(`saved_${i}`)}
+                  style={{ fontSize: '12px', padding: '7px 14px' }}
+                >
+                  {entry.producto || 'Sin Nombre'} <span style={{ fontSize: '10px', opacity: 0.6, marginLeft: 4 }}>({entry.fecha})</span>
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handleDelete(i)}
+                  style={{ padding: '5px', borderRadius: '6px', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444', minWidth: 'auto' }}
+                  title="Eliminar análisis guardado"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+          {savedParetos.length === 0 && (
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.15)',
+              padding: '10px 14px', borderRadius: '8px', fontSize: '12px', color: '#f59e0b', marginTop: 8
+            }}>
+              💡 No hay análisis de Pareto guardados aún. Complete un diagrama y haga clic en <strong>Guardar Análisis</strong> para persistir su trabajo.
+            </div>
+          )}
+        </div>
+
+        {/* Configuración */}
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="section-title" style={{ marginBottom: 12 }}>Configuración del Producto / Proceso</div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Nombre del Producto / Proceso</label>
-              <input type="text" className="form-input" style={{ width: 300 }} value={producto} onChange={e => setProducto(e.target.value)} placeholder="Ej: Manzanilla Alemana" />
+              <input type="text" className="form-input" style={{ width: 300, maxWidth: '100%' }} value={producto} onChange={e => setProducto(e.target.value)} placeholder="Ej: Manzanilla Alemana" />
             </div>
           </div>
         </div>
@@ -78,9 +286,12 @@ export default function ParetoPage() {
                 ))}
               </tbody></table>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className="btn btn-secondary btn-sm" onClick={() => setCustomRows(r => [...r, { tipo: '', count: '' }])}>+ Agregar fila</button>
-              <button className="btn btn-primary" onClick={handleCustom}>Generar Pareto</button>
+              <button className="btn btn-primary" onClick={handleGenerate}>Generar Pareto</button>
+              <button className="btn btn-secondary" onClick={handleSave} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Save size={14} /> {activePreset.startsWith('saved_') ? 'Actualizar Análisis' : 'Guardar Análisis'}
+              </button>
             </div>
           </div>
 

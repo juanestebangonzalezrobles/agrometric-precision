@@ -308,6 +308,16 @@ export default function AtributosPage() {
     }
   }, []);
 
+  // --- Utilidad: Extraer valor de defectos/defectuosos de un subgrupo de forma universal ---
+  // Permite intercambiar entre gráficos P/NP (np) y C/U (c) sin importar la estructura original del registro
+  function extractDefectValue(s) {
+    // Prioridad: np (para P/NP) o c (para C/U). Fallback cruzado.
+    const np = parseInt(s.np ?? s.c ?? 0);
+    const c = parseInt(s.c ?? s.np ?? 0);
+    const n = Math.max(1, parseInt(s.n) || 100);
+    return { n, np, c };
+  }
+
   // Motor matemático de análisis y Nelson Rules sobre Atributos
   function computeChartResults(subgrupos, tipoGrafico) {
     if (!subgrupos || subgrupos.length === 0) return null;
@@ -316,13 +326,12 @@ export default function AtributosPage() {
     let lcVal = 0, uclVal = 0, lclVal = 0;
     
     if (tipoGrafico === 'p') {
-      const totalN = subgrupos.reduce((sum, s) => sum + (parseInt(s.n) || 100), 0);
-      const totalNP = subgrupos.reduce((sum, s) => sum + (parseInt(s.np) || 0), 0);
+      const totalN = subgrupos.reduce((sum, s) => sum + extractDefectValue(s).n, 0);
+      const totalNP = subgrupos.reduce((sum, s) => sum + extractDefectValue(s).np, 0);
       const pbar = totalN > 0 ? totalNP / totalN : 0;
       
       chartData = subgrupos.map((s, i) => {
-        const n = Math.max(1, parseInt(s.n) || 100);
-        const np = Math.max(0, parseInt(s.np) || 0);
+        const { n, np } = extractDefectValue(s);
         const p = np / n;
         const stdDev = Math.sqrt((pbar * (1 - pbar)) / n);
         const ucl = pbar + 3 * stdDev;
@@ -346,16 +355,15 @@ export default function AtributosPage() {
       uclVal = chartData[0]?.ucl || 0;
       lclVal = chartData[0]?.lcl || 0;
     } else if (tipoGrafico === 'np') {
-      const totalN = subgrupos.reduce((sum, s) => sum + (parseInt(s.n) || 100), 0);
-      const totalNP = subgrupos.reduce((sum, s) => sum + (parseInt(s.np) || 0), 0);
+      const totalN = subgrupos.reduce((sum, s) => sum + extractDefectValue(s).n, 0);
+      const totalNP = subgrupos.reduce((sum, s) => sum + extractDefectValue(s).np, 0);
       const pbar = totalN > 0 ? totalNP / totalN : 0;
       const k = subgrupos.length;
       const averageN = k > 0 ? totalN / k : 100;
       const npbar = pbar * averageN;
       
       chartData = subgrupos.map((s, i) => {
-        const n = Math.max(1, parseInt(s.n) || 100);
-        const np = Math.max(0, parseInt(s.np) || 0);
+        const { n, np } = extractDefectValue(s);
         const stdDev = Math.sqrt(n * pbar * (1 - pbar));
         const centerLine = n * pbar;
         const ucl = centerLine + 3 * stdDev;
@@ -378,13 +386,12 @@ export default function AtributosPage() {
       uclVal = chartData[0]?.ucl || 0;
       lclVal = chartData[0]?.lcl || 0;
     } else if (tipoGrafico === 'u') {
-      const totalN = subgrupos.reduce((sum, s) => sum + (parseInt(s.n) || 100), 0);
-      const totalC = subgrupos.reduce((sum, s) => sum + (parseInt(s.c) || 0), 0);
+      const totalN = subgrupos.reduce((sum, s) => sum + extractDefectValue(s).n, 0);
+      const totalC = subgrupos.reduce((sum, s) => sum + extractDefectValue(s).c, 0);
       const ubar = totalN > 0 ? totalC / totalN : 0;
       
       chartData = subgrupos.map((s, i) => {
-        const n = Math.max(1, parseInt(s.n) || 100);
-        const c = Math.max(0, parseInt(s.c) || 0);
+        const { n, c } = extractDefectValue(s);
         const u = c / n;
         const stdDev = Math.sqrt(ubar / n);
         const ucl = ubar + 3 * stdDev;
@@ -409,7 +416,7 @@ export default function AtributosPage() {
       lclVal = chartData[0]?.lcl || 0;
     } else {
       const k = subgrupos.length;
-      const totalC = subgrupos.reduce((sum, s) => sum + (parseInt(s.c) || 0), 0);
+      const totalC = subgrupos.reduce((sum, s) => sum + extractDefectValue(s).c, 0);
       const cbar = k > 0 ? totalC / k : 0;
       
       const stdDev = Math.sqrt(cbar);
@@ -417,7 +424,7 @@ export default function AtributosPage() {
       const lcl = Math.max(0, cbar - 3 * stdDev);
       
       chartData = subgrupos.map((s, i) => {
-        const c = Math.max(0, parseInt(s.c) || 0);
+        const { c } = extractDefectValue(s);
         const z = stdDev > 0 ? (c - cbar) / stdDev : 0;
         
         return { 
@@ -489,6 +496,9 @@ export default function AtributosPage() {
     }
   };
 
+  // Referencia para saber cuál preset fue cargado por última vez (evita resetear tipo al recalcular)
+  const [lastLoadedPreset, setLastLoadedPreset] = useState(null);
+
   // Escuchar cambios de preset o datos
   useEffect(() => {
     if (!mounted) return;
@@ -496,6 +506,7 @@ export default function AtributosPage() {
     if (preset === 'custom') {
       setCustomMode(true);
       setDs(null);
+      setLastLoadedPreset('custom');
       handleCustomCalc();
     } else if (preset.startsWith('user_')) {
       setCustomMode(false);
@@ -509,16 +520,30 @@ export default function AtributosPage() {
           tipoGrafico: rec.tipoGrafico || 'p',
         };
         setDs(fakeDs);
-        setTipo(rec.tipoGrafico || 'p');
-        setResult(computeChartResults(rec.subgruposData, rec.tipoGrafico || 'p'));
+        // Solo setear tipo automáticamente la primera vez que se carga este preset
+        const isNewPreset = lastLoadedPreset !== preset;
+        if (isNewPreset) {
+          setTipo(rec.tipoGrafico || 'p');
+          setLastLoadedPreset(preset);
+        }
+        // Siempre recalcular con el tipo actual (que el usuario puede haber cambiado)
+        const activeTipo = isNewPreset ? (rec.tipoGrafico || 'p') : tipo;
+        setResult(computeChartResults(rec.subgruposData, activeTipo));
       }
     }
   }, [preset, userRecords, mounted, customRows, customN]);
 
-  // Recalcular custom al cambiar tipo
+  // Recalcular al cambiar tipo — tanto para custom como para registros de usuario
   useEffect(() => {
-    if (mounted && preset === 'custom') {
+    if (!mounted) return;
+    if (preset === 'custom') {
       handleCustomCalc();
+    } else if (preset.startsWith('user_')) {
+      const idx = parseInt(preset.replace('user_', ''));
+      const rec = userRecords[idx];
+      if (rec && Array.isArray(rec.subgruposData)) {
+        setResult(computeChartResults(rec.subgruposData, tipo));
+      }
     }
   }, [tipo, mounted]);
 
@@ -755,8 +780,59 @@ export default function AtributosPage() {
           const pad = (yMax - yMin) * 0.15 || 0.05;
           const domainAttr = [Math.max(0, +(yMin - pad).toFixed(4)), +(yMax + pad).toFixed(4)];
 
+          const chartTypes = [
+            { key: 'p', label: 'P', desc: 'Proporción' },
+            { key: 'np', label: 'NP', desc: 'Defectuosos' },
+            { key: 'c', label: 'C', desc: 'Defectos' },
+            { key: 'u', label: 'U', desc: 'Def/Unidad' },
+          ];
+
           return (
             <div className={`card chart-wrapper ${!printConfig.chart ? 'no-print' : ''}`} style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', marginBottom: 16 }}>
+              {/* Selector segmentado de tipo de gráfico */}
+              <div className="no-print" style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                flexWrap: 'wrap', gap: 10, marginBottom: 14
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <TrendingUp size={16} style={{ color: 'var(--green-light)' }} />
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tipo de Gráfico:</span>
+                </div>
+                <div style={{
+                  display: 'flex',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '3px',
+                  gap: '2px'
+                }}>
+                  {chartTypes.map(ct => (
+                    <button
+                      key={ct.key}
+                      onClick={() => setTipo(ct.key)}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontFamily: 'Outfit, sans-serif',
+                        fontSize: '12px',
+                        fontWeight: tipo === ct.key ? 800 : 600,
+                        letterSpacing: '0.3px',
+                        transition: 'all 0.2s ease',
+                        background: tipo === ct.key
+                          ? 'linear-gradient(135deg, var(--green-primary), var(--green-dark))'
+                          : 'transparent',
+                        color: tipo === ct.key ? '#ffffff' : 'var(--text-muted)',
+                        boxShadow: tipo === ct.key ? '0 2px 8px rgba(16,185,129,0.3)' : 'none',
+                      }}
+                      title={ct.desc}
+                    >
+                      {ct.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="chart-title print-text-dark" style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', marginBottom: 4 }}>
                 {result.tipo === 'p' && '📉 Gráfico P — Fracción de Unidades Defectuosas'}
                 {result.tipo === 'np' && '📉 Gráfico NP — Número de Unidades Defectuosas'}
