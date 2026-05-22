@@ -126,7 +126,11 @@ function downloadCSV(data, filename) {
   // e intercambiamos las comas por punto y coma como delimitador estándar para Excel.
   // Además usamos \r\n para saltos de línea correctos en Windows.
   const csvContent = 'sep=;\r\n' + data.map(row => row.map(cell => {
-    const cellStr = String(cell);
+    let cellStr = String(cell);
+    // Si es un número decimal (con punto), reemplazar el punto por coma para Excel en español
+    if (/^-?\d+\.\d+$/.test(cellStr)) {
+      cellStr = cellStr.replace('.', ',');
+    }
     // Si la celda contiene punto y coma, saltos de línea o comillas, la escapamos con comillas dobles
     if (cellStr.includes(';') || cellStr.includes('\n') || cellStr.includes('\r') || cellStr.includes('"')) {
       return `"${cellStr.replace(/"/g, '""')}"`;
