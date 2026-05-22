@@ -1,6 +1,6 @@
 'use client';
 import './globals.css';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -14,7 +14,9 @@ import {
   GitFork,
   Upload,
   Download,
-  BookOpen
+  BookOpen,
+  Menu,
+  X
 } from 'lucide-react';
 import { aguacatePeso, aloeAltura, manzanillaP, tomateDefectos } from '../lib/data';
 
@@ -37,16 +39,21 @@ const navItems = [
   { href: '/ayuda', icon: BookOpen, label: 'Guía Teórica y Ayuda' },
 ];
 
-function Sidebar() {
+function Sidebar({ isOpen, onClose }) {
   const pathname = usePathname();
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       <div className="sidebar-logo">
-        <div className="sidebar-logo-icon" style={{ fontSize: '14px', fontWeight: 'bold' }}>AM</div>
-        <div className="sidebar-logo-text">
-          <h1>AgroMetric</h1>
-          <span>Control de Calidad</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+          <div className="sidebar-logo-icon" style={{ fontSize: '14px', fontWeight: 'bold' }}>AM</div>
+          <div className="sidebar-logo-text">
+            <h1>AgroMetric</h1>
+            <span>Control de Calidad</span>
+          </div>
         </div>
+        <button className="sidebar-close-btn no-print" onClick={onClose}>
+          <X size={18} />
+        </button>
       </div>
       <nav className="sidebar-nav">
         {navItems.map((item, i) =>
@@ -57,6 +64,7 @@ function Sidebar() {
               key={item.href}
               href={item.href}
               className={`nav-item ${pathname === item.href ? 'active' : ''}`}
+              onClick={onClose}
             >
               <item.icon className="nav-item-icon" size={18} />
               <span>{item.label}</span>
@@ -74,6 +82,8 @@ function Sidebar() {
 }
 
 export default function RootLayout({ children }) {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   useEffect(() => {
     // Inicialización del entorno, sin siembra de datos de demostración
     try {
@@ -97,7 +107,19 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <div className="app-layout">
-          <Sidebar />
+          <header className="mobile-header no-print">
+            <button className="mobile-menu-btn" onClick={() => setIsSidebarOpen(true)}>
+              <Menu size={22} />
+            </button>
+            <div className="mobile-logo">
+              <div className="mobile-logo-icon">AM</div>
+              <div className="mobile-logo-text">AgroMetric</div>
+            </div>
+          </header>
+
+          <div className={`sidebar-overlay ${isSidebarOpen ? 'active' : ''}`} onClick={() => setIsSidebarOpen(false)} />
+
+          <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
           <main className="main-content">{children}</main>
         </div>
       </body>

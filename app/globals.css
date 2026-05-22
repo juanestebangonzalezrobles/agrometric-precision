@@ -741,3 +741,260 @@ tr:hover td {
   /* Clase auxiliar para ocultar componentes específicos en la app */
 }
 
+/* --- ESTILOS DE RESPONSIVIDAD PARA MÓVILES Y TABLETS --- */
+
+/* Header móvil oculto en escritorio por defecto */
+.mobile-header {
+  display: none;
+  height: 60px;
+  background: rgba(10, 15, 13, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 99;
+  padding: 0 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mobile-menu-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+
+.mobile-menu-btn:hover {
+  background: var(--bg-card);
+}
+
+.mobile-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobile-logo-icon {
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(135deg, var(--green-dark), var(--green-primary));
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 0 10px var(--green-glow);
+  color: #fff;
+}
+
+.mobile-logo-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--green-light);
+}
+
+/* Botón cerrar sidebar (oculto en desktop) */
+.sidebar-close-btn {
+  display: none;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.sidebar-close-btn:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+/* Overlay de la barra lateral en celular */
+.sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 98;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.sidebar-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Media Query para pantallas medianas y pequeñas (Computadoras portátiles pequeñas, tablets y móviles) */
+@media (max-width: 1024px) {
+  .mobile-header {
+    display: flex;
+  }
+
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+    width: var(--sidebar-width);
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+    padding-top: 60px; /* altura de .mobile-header */
+  }
+
+  .header {
+    position: static; /* Evitar dos cabeceras fijas amontonadas */
+    height: auto;
+    padding: 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    background: transparent;
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: none;
+  }
+
+  .header > div {
+    width: 100%;
+  }
+
+  /* Ajustar botones en headers */
+  .header .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Media Query para móviles y tablets pequeños */
+@media (max-width: 768px) {
+  .page-content {
+    padding: 16px;
+  }
+
+  /* Grillas de layouts */
+  .grid-2, .grid-3 {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px;
+  }
+
+  .kpi-card {
+    padding: 12px 14px;
+  }
+
+  .kpi-value {
+    font-size: 20px;
+    margin: 4px 0 2px;
+  }
+
+  .kpi-icon {
+    top: 12px;
+    right: 12px;
+    font-size: 24px;
+  }
+
+  .kpi-icon svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* Formularios responsivos */
+  .form-group input, .form-group select, .form-group textarea {
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+
+  /* Pestañas de navegación de páginas (tabs) */
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    gap: 6px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab {
+    flex-shrink: 0;
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+
+  /* Ajustar botones */
+  .btn {
+    padding: 8px 14px;
+    font-size: 12.5px;
+    width: 100%; /* Botones a lo ancho en celular */
+    justify-content: center;
+  }
+
+  .btn-sm {
+    width: auto; /* Dejar botones pequeños normales */
+  }
+
+  /* Cuadros de alerta e interpretación */
+  .interpretation, .stat-box {
+    padding: 10px 14px;
+    font-size: 12.5px;
+  }
+
+  /* Modales responsivos */
+  .modal-content {
+    width: 95% !important;
+    padding: 16px !important;
+    margin: 10px;
+  }
+
+  /* Clases auxiliares */
+  .help-layout {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .help-sidebar {
+    width: 100% !important;
+    position: static !important;
+  }
+
+  .help-sidebar .card {
+    position: static !important;
+    margin-bottom: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .kpi-grid {
+    grid-template-columns: 1fr !important; /* 1 columna en pantallas ultra pequeñas */
+  }
+}
+
+

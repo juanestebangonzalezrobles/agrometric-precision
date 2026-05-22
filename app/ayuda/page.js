@@ -1195,10 +1195,10 @@ export default function AyudaPage() {
           <div className="header-subtitle">Aprende los conceptos de Control Estadístico de Calidad — desde cero</div>
         </div>
       </div>
-      <div className="page-content fade-in" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+      <div className="page-content fade-in help-layout">
 
         {/* Sidebar de secciones */}
-        <div style={{ width: 240, flexShrink: 0 }}>
+        <div className="help-sidebar" style={{ flexShrink: 0 }}>
           <div className="card" style={{ padding: '12px 8px', position: 'sticky', top: 80 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '0 8px', marginBottom: 8 }}>
               Contenido
