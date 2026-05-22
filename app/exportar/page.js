@@ -122,8 +122,19 @@ function saveSafeRecords(records) {
 }
 
 function downloadCSV(data, filename) {
-  const csv = data.map(row => row.join(',')).join('\n');
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  // Para que Excel lo abra directamente como tabla, añadimos 'sep=;' como primera línea
+  // e intercambiamos las comas por punto y coma como delimitador estándar para Excel.
+  // Además usamos \r\n para saltos de línea correctos en Windows.
+  const csvContent = 'sep=;\r\n' + data.map(row => row.map(cell => {
+    const cellStr = String(cell);
+    // Si la celda contiene punto y coma, saltos de línea o comillas, la escapamos con comillas dobles
+    if (cellStr.includes(';') || cellStr.includes('\n') || cellStr.includes('\r') || cellStr.includes('"')) {
+      return `"${cellStr.replace(/"/g, '""')}"`;
+    }
+    return cellStr;
+  }).join(';')).join('\r\n');
+
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
 }
