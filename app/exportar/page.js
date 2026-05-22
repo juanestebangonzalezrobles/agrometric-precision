@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { aguacatePeso, aloeAltura, calcXbarR, calcP, calcCapability, manzanillaP, tomateDefectos } from '../../lib/data';
+import { calcXbarR, calcXbarS, calcCapability } from '../../lib/data';
 import { 
   FolderOpen, 
   CheckCircle, 
@@ -103,7 +103,7 @@ function getSafeRecords() {
     return parsed
       .map(safeSanitize)
       .filter(Boolean)
-      .filter(r => !r.isDemo && !r.id.startsWith('demo_')); // Filtrar siempre demos de presets antiguos
+      .filter(r => !r.isDemo && !r.id.startsWith('demo_') && !r.id.startsWith('seeded_')); // Filtrar siempre demos de presets antiguos y datos sembrados
   } catch (e) {
     console.error('Error al parsear localStorage:', e);
     return [];
@@ -128,6 +128,66 @@ function downloadCSV(data, filename) {
   const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
 }
 
+function computeAttributeLimits(subgrupos, tipoGrafico) {
+  if (!subgrupos || subgrupos.length === 0) return [];
+  
+  if (tipoGrafico === 'p') {
+    const totalN = subgrupos.reduce((sum, s) => sum + (parseInt(s.n) || 100), 0);
+    const totalNP = subgrupos.reduce((sum, s) => sum + (parseInt(s.np) || 0), 0);
+    const pbar = totalN > 0 ? totalNP / totalN : 0;
+    
+    return subgrupos.map((s, i) => {
+      const n = Math.max(1, parseInt(s.n) || 100);
+      const np = Math.max(0, parseInt(s.np) || 0);
+      const p = np / n;
+      const stdDev = Math.sqrt((pbar * (1 - pbar)) / n);
+      const ucl = pbar + 3 * stdDev;
+      const lcl = Math.max(0, pbar - 3 * stdDev);
+      return { sg: i + 1, val: p, n, count: np, ucl, lc: pbar, lcl, ooc: p > ucl || p < lcl };
+    });
+  } else if (tipoGrafico === 'np') {
+    const totalN = subgrupos.reduce((sum, s) => sum + (parseInt(s.n) || 100), 0);
+    const totalNP = subgrupos.reduce((sum, s) => sum + (parseInt(s.np) || 0), 0);
+    const pbar = totalN > 0 ? totalNP / totalN : 0;
+    
+    return subgrupos.map((s, i) => {
+      const n = Math.max(1, parseInt(s.n) || 100);
+      const np = Math.max(0, parseInt(s.np) || 0);
+      const stdDev = Math.sqrt(n * pbar * (1 - pbar));
+      const centerLine = n * pbar;
+      const ucl = centerLine + 3 * stdDev;
+      const lcl = Math.max(0, centerLine - 3 * stdDev);
+      return { sg: i + 1, val: np, n, count: np, ucl, lc: centerLine, lcl, ooc: np > ucl || np < lcl };
+    });
+  } else if (tipoGrafico === 'u') {
+    const totalN = subgrupos.reduce((sum, s) => sum + (parseInt(s.n) || 100), 0);
+    const totalC = subgrupos.reduce((sum, s) => sum + (parseInt(s.c) || 0), 0);
+    const ubar = totalN > 0 ? totalC / totalN : 0;
+    
+    return subgrupos.map((s, i) => {
+      const n = Math.max(1, parseInt(s.n) || 100);
+      const c = Math.max(0, parseInt(s.c) || 0);
+      const u = c / n;
+      const stdDev = Math.sqrt(ubar / n);
+      const ucl = ubar + 3 * stdDev;
+      const lcl = Math.max(0, ubar - 3 * stdDev);
+      return { sg: i + 1, val: u, n, count: c, ucl, lc: ubar, lcl, ooc: u > ucl || u < lcl };
+    });
+  } else { // 'c'
+    const k = subgrupos.length;
+    const totalC = subgrupos.reduce((sum, s) => sum + (parseInt(s.c) || 0), 0);
+    const cbar = k > 0 ? totalC / k : 0;
+    const stdDev = Math.sqrt(cbar);
+    const ucl = cbar + 3 * stdDev;
+    const lcl = Math.max(0, cbar - 3 * stdDev);
+    
+    return subgrupos.map((s, i) => {
+      const c = Math.max(0, parseInt(s.c) || 0);
+      return { sg: i + 1, val: c, n: '-', count: c, ucl, lc: cbar, lcl, ooc: c > ucl || c < lcl };
+    });
+  }
+}
+
 export default function ExportarPage() {
   const router = useRouter();
   const [tab, setTab] = useState('exportar');
@@ -136,6 +196,14 @@ export default function ExportarPage() {
   const [parseError, setParseError] = useState('');
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef();
+
+  const [records, setRecords] = useState([]);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    setRecords(getSafeRecords());
+  }, []);
 
   // Formulario y Estados de Mapeo Estadístico
   const [dataType, setDataType] = useState('variable'); // 'variable' o 'atributo'
@@ -196,52 +264,198 @@ export default function ExportarPage() {
     }
   }, [parsedData, dataType]);
 
-  const handleExport = (tipo) => {
-    if (tipo === 'aguacate_xbarr') {
-      const r = calcXbarR(aguacatePeso.subgrupos);
+  const handleExportDataRaw = (rec) => {
+    let rows = [];
+    const safeProduct = rec.producto.replace(/[\s,]+/g, '_').toLowerCase();
+    
+    if (rec.isAtributo) {
+      if (rec.tipoGrafico === 'p' || rec.tipoGrafico === 'np') {
+        rows = [
+          [`AgroMetric Precision — Datos Brutos: ${rec.producto} (${rec.variable})`],
+          ['Subgrupo', 'Tamaño de Subgrupo (n)', 'Unidades Defectuosas (np)'],
+          ...rec.subgruposData.map((row, i) => [
+            i + 1,
+            row.n,
+            row.np
+          ])
+        ];
+      } else if (rec.tipoGrafico === 'u') {
+        rows = [
+          [`AgroMetric Precision — Datos Brutos: ${rec.producto} (${rec.variable})`],
+          ['Subgrupo', 'Tamaño de Subgrupo (n)', 'Conteo de Defectos (c)'],
+          ...rec.subgruposData.map((row, i) => [
+            i + 1,
+            row.n,
+            row.c
+          ])
+        ];
+      } else { // 'c'
+        rows = [
+          [`AgroMetric Precision — Datos Brutos: ${rec.producto} (${rec.variable})`],
+          ['Subgrupo', 'Conteo de Defectos (c)'],
+          ...rec.subgruposData.map((row, i) => [
+            i + 1,
+            row.c
+          ])
+        ];
+      }
+      downloadCSV(rows, `datos_brutos_${safeProduct}_${rec.tipoGrafico}.csv`);
+    } else {
+      const maxObs = rec.subgruposData[0]?.length || 0;
+      const obsHeaders = Array.from({ length: maxObs }, (_, idx) => `X${idx + 1}`);
+      rows = [
+        [`AgroMetric Precision — Datos Brutos: ${rec.producto} (${rec.variable})`],
+        ['Subgrupo', ...obsHeaders, 'Promedio (Xbar)', 'Rango (R)', 'Desviación Estándar (s)'],
+        ...rec.subgruposData.map((row, i) => {
+          const mean = row.reduce((a, b) => a + b, 0) / row.length;
+          const max = Math.max(...row);
+          const min = Math.min(...row);
+          const range = max - min;
+          const variance = row.reduce((a, b) => a + (b - mean) ** 2, 0) / (row.length - 1 || 1);
+          const sd = Math.sqrt(variance);
+          return [
+            i + 1,
+            ...row,
+            mean.toFixed(4),
+            range.toFixed(4),
+            sd.toFixed(4)
+          ];
+        })
+      ];
+      downloadCSV(rows, `datos_brutos_${safeProduct}.csv`);
+    }
+  };
+
+  const handleExportVariableXbarR = (rec) => {
+    try {
+      const r = calcXbarR(rec.subgruposData);
+      const safeProduct = rec.producto.replace(/[\s,]+/g, '_').toLowerCase();
       const rows = [
-        ['AgroMetric Precision — Gráfico X̄-R: Aguacate Hass (Peso g)'],
-        ['Subgrupo', 'X̄', 'R', 'LCS(X̄)', 'LC(X̄)', 'LCI(X̄)', 'LCS(R)', 'LC(R)', 'LCI(R)', 'Estado X̄', 'Estado R'],
+        [`AgroMetric Precision — Análisis Gráfico X̄-R: ${rec.producto} (${rec.variable})`],
+        ['Subgrupo', 'Promedio (X̄)', 'Rango (R)', 'LCS(X̄)', 'LC(X̄)', 'LCI(X̄)', 'LCS(R)', 'LC(R)', 'LCI(R)', 'Estado X̄', 'Estado R'],
         ...r.stats.map((s, i) => [
-          i + 1, s.mean.toFixed(3), s.range.toFixed(3),
-          r.UCL_X.toFixed(3), r.Xbarbar.toFixed(3), r.LCL_X.toFixed(3),
-          r.UCL_R.toFixed(3), r.Rbar.toFixed(3), r.LCL_R.toFixed(3),
-          s.mean > r.UCL_X || s.mean < r.LCL_X ? 'OOC' : 'OK',
-          s.range > r.UCL_R || s.range < r.LCL_R ? 'OOC' : 'OK',
-        ]),
+          i + 1,
+          s.mean.toFixed(4),
+          s.range.toFixed(4),
+          r.UCL_X.toFixed(4),
+          r.Xbarbar.toFixed(4),
+          r.LCL_X.toFixed(4),
+          r.UCL_R.toFixed(4),
+          r.Rbar.toFixed(4),
+          r.LCL_R.toFixed(4),
+          (s.mean > r.UCL_X || s.mean < r.LCL_X) ? 'Fuera de Control (OOC)' : 'Estable (OK)',
+          (s.range > r.UCL_R || s.range < r.LCL_R) ? 'Fuera de Control (OOC)' : 'Estable (OK)',
+        ])
       ];
-      downloadCSV(rows, 'agrometric_aguacate_xbarr.csv');
-    } else if (tipo === 'manzanilla_p') {
-      const data = calcP(manzanillaP.subgrupos);
+      downloadCSV(rows, `grafico_xbar_r_${safeProduct}.csv`);
+    } catch (err) {
+      alert(`Error al calcular gráfico X̄-R: ${err.message}`);
+    }
+  };
+
+  const handleExportVariableXbarS = (rec) => {
+    try {
+      const r = calcXbarS(rec.subgruposData);
+      const safeProduct = rec.producto.replace(/[\s,]+/g, '_').toLowerCase();
       const rows = [
-        ['AgroMetric Precision — Gráfico P: Manzanilla Alemana'],
-        ['Subgrupo', 'n', 'np', 'p', 'LCS', 'LC', 'LCI', 'Estado'],
-        ...data.map(d => [d.sg, d.n, d.np, d.p.toFixed(4), d.ucl.toFixed(4), d.pbar.toFixed(4), d.lcl.toFixed(4), d.ooc ? 'OOC' : 'OK']),
+        [`AgroMetric Precision — Análisis Gráfico X̄-S: ${rec.producto} (${rec.variable})`],
+        ['Subgrupo', 'Promedio (X̄)', 'Desv. Estándar (s)', 'LCS(X̄)', 'LC(X̄)', 'LCI(X̄)', 'LCS(s)', 'LC(s)', 'LCI(s)', 'Estado X̄', 'Estado s'],
+        ...r.stats.map((s, i) => [
+          i + 1,
+          s.mean.toFixed(4),
+          s.range.toFixed(4), // En calcXbarS, range contiene la desviación estándar s
+          r.UCL_X.toFixed(4),
+          r.Xbarbar.toFixed(4),
+          r.LCL_X.toFixed(4),
+          r.UCL_S.toFixed(4),
+          r.Sbar.toFixed(4),
+          r.LCL_S.toFixed(4),
+          (s.mean > r.UCL_X || s.mean < r.LCL_X) ? 'Fuera de Control (OOC)' : 'Estable (OK)',
+          (s.range > r.UCL_S || s.range < r.LCL_S) ? 'Fuera de Control (OOC)' : 'Estable (OK)',
+        ])
       ];
-      downloadCSV(rows, 'agrometric_manzanilla_p.csv');
-    } else if (tipo === 'capacidad') {
-      const r = calcCapability(aguacatePeso.subgrupos, aguacatePeso.lse, aguacatePeso.lie);
+      downloadCSV(rows, `grafico_xbar_s_${safeProduct}.csv`);
+    } catch (err) {
+      alert(`Error al calcular gráfico X̄-S: ${err.message}`);
+    }
+  };
+
+  const handleExportCapability = (rec) => {
+    try {
+      const lseVal = rec.lse !== '-' && rec.lse !== '' ? parseFloat(String(rec.lse).replace(',', '.')) : null;
+      const lieVal = rec.lie !== '-' && rec.lie !== '' ? parseFloat(String(rec.lie).replace(',', '.')) : null;
+      
+      const cap = calcCapability(rec.subgruposData, lseVal, lieVal);
+      const safeProduct = rec.producto.replace(/[\s,]+/g, '_').toLowerCase();
+      
       const rows = [
-        ['AgroMetric Precision — Capacidad del Proceso: Aguacate Hass'],
+        [`AgroMetric Precision — Capacidad del Proceso: ${rec.producto} (${rec.variable})`],
         ['Parámetro', 'Valor'],
-        ['Media (X̄)', r.mean.toFixed(4)], ['Desv. Estándar (σ)', r.sigma.toFixed(4)],
-        ['LSE', r.lse], ['LIE', r.lie],
-        ['Cp', r.Cp.toFixed(4)], ['Cpk', r.Cpk.toFixed(4)],
-        ['Cpu', r.Cpu.toFixed(4)], ['Cpl', r.Cpl.toFixed(4)],
-        ['Pp', r.Pp.toFixed(4)], ['Ppk', r.Ppk.toFixed(4)],
+        ['Media General (X̄)', cap.mean.toFixed(4)],
+        ['Desv. Estándar Total (σ_overall)', cap.sigma.toFixed(4)],
+        ['Desv. Estándar Corto Plazo (σ_within)', cap.sigmaWithin.toFixed(4)],
+        ['Límite Superior Especificación (LSE)', lseVal !== null ? lseVal : '-'],
+        ['Límite Inferior Especificación (LIE)', lieVal !== null ? lieVal : '-'],
       ];
-      downloadCSV(rows, 'agrometric_capacidad.csv');
-    } else if (tipo === 'datos_raw') {
+
+      if (lseVal !== null && lieVal !== null) {
+        rows.push(['Cp', !isNaN(cap.Cp) ? cap.Cp.toFixed(4) : '-']);
+      }
+      if (lseVal !== null) {
+        rows.push(['Cpu', !isNaN(cap.Cpu) ? cap.Cpu.toFixed(4) : '-']);
+      }
+      if (lieVal !== null) {
+        rows.push(['Cpl', !isNaN(cap.Cpl) ? cap.Cpl.toFixed(4) : '-']);
+      }
+      rows.push(['Cpk', !isNaN(cap.Cpk) ? cap.Cpk.toFixed(4) : '-']);
+
+      if (lseVal !== null && lieVal !== null) {
+        rows.push(['Pp', !isNaN(cap.Pp) ? cap.Pp.toFixed(4) : '-']);
+      }
+      rows.push(['Ppk', !isNaN(cap.Ppk) ? cap.Ppk.toFixed(4) : '-']);
+
+      downloadCSV(rows, `capacidad_${safeProduct}.csv`);
+    } catch (err) {
+      alert(`Error al calcular capacidad: ${err.message}`);
+    }
+  };
+
+  const handleExportAttributeChart = (rec) => {
+    try {
+      const results = computeAttributeLimits(rec.subgruposData, rec.tipoGrafico);
+      const safeProduct = rec.producto.replace(/[\s,]+/g, '_').toLowerCase();
+      
+      let valHeader = 'Proporción (p)';
+      let countHeader = 'Defectuosos (np)';
+      
+      if (rec.tipoGrafico === 'np') {
+        valHeader = 'Defectuosos (np)';
+        countHeader = 'Defectuosos (np)';
+      } else if (rec.tipoGrafico === 'u') {
+        valHeader = 'Tasa de Defectos (u)';
+        countHeader = 'Defectos (c)';
+      } else if (rec.tipoGrafico === 'c') {
+        valHeader = 'Defectos (c)';
+        countHeader = 'Defectos (c)';
+      }
+      
       const rows = [
-        ['AgroMetric Precision — Datos Brutos: Aguacate Hass (Peso g)'],
-        ['Subgrupo', ...Array.from({ length: 5 }, (_, i) => `X${i + 1}`), 'Media', 'Rango'],
-        ...aguacatePeso.subgrupos.map((sg, i) => {
-          const m = sg.reduce((a, b) => a + b, 0) / sg.length;
-          const r = Math.max(...sg) - Math.min(...sg);
-          return [i + 1, ...sg, m.toFixed(2), r.toFixed(2)];
-        }),
+        [`AgroMetric Precision — Gráfico de Atributos ${rec.tipoGrafico.toUpperCase()}: ${rec.producto} (${rec.variable})`],
+        ['Subgrupo', valHeader, 'Tamaño Subgrupo (n)', countHeader, 'LCS', 'LC', 'LCI', 'Estado'],
+        ...results.map(r => [
+          r.sg,
+          rec.tipoGrafico === 'c' || rec.tipoGrafico === 'np' ? r.val : r.val.toFixed(4),
+          r.n,
+          r.count,
+          r.ucl.toFixed(4),
+          r.lc.toFixed(4),
+          r.lcl.toFixed(4),
+          r.ooc ? 'Fuera de Control (OOC)' : 'Estable (OK)'
+        ])
       ];
-      downloadCSV(rows, 'agrometric_datos_aguacate.csv');
+      downloadCSV(rows, `grafico_atributos_${rec.tipoGrafico}_${safeProduct}.csv`);
+    } catch (err) {
+      alert(`Error al calcular límites del gráfico de atributos: ${err.message}`);
     }
   };
 
@@ -475,21 +689,125 @@ export default function ExportarPage() {
         </div>
 
         {tab === 'exportar' && (
-          <div className="grid-2">
-            {[
-              { key: 'aguacate_xbarr', title: 'Gráfico X̄-R — Aguacate', desc: 'Tabla completa con límites de control y estados OOC' },
-              { key: 'manzanilla_p', title: 'Gráfico P — Manzanilla', desc: 'Proporción de defectuosos por subgrupo' },
-              { key: 'capacidad', title: 'Capacidad — Aguacate', desc: 'Cp, Cpk, Pp, Ppk y parámetros del proceso' },
-              { key: 'datos_raw', title: 'Datos Brutos — Aguacate', desc: 'Todas las observaciones con media y rango por subgrupo' },
-            ].map(exp => (
-              <div key={exp.key} className="card">
-                <div className="card-title" style={{ marginBottom: 6 }}>{exp.title}</div>
-                <div className="card-subtitle" style={{ marginBottom: 16 }}>{exp.desc}</div>
-                <button className="btn btn-primary btn-sm" onClick={() => handleExport(exp.key)}>
-                  Descargar CSV
+          <div>
+            {!mounted ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                Cargando muestras...
+              </div>
+            ) : records.length === 0 ? (
+              <div className="card" style={{ textAlign: 'center', padding: '48px 24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+                  <FolderOpen size={48} strokeWidth={1.5} style={{ color: 'var(--text-muted)' }} />
+                </div>
+                <div className="card-title" style={{ fontSize: 18, marginBottom: 8 }}>No se encontraron muestras registradas</div>
+                <div className="card-subtitle" style={{ maxWidth: 500, margin: '0 auto 24px', lineHeight: 1.5 }}>
+                  Para exportar reportes, primero debes crear o digitar muestras en el registro de muestras o importar un archivo.
+                </div>
+                <button className="btn btn-primary" onClick={() => router.push('/muestras')}>
+                  Ir al Registro de Muestras
                 </button>
               </div>
-            ))}
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+                    Mostrando <strong>{records.length}</strong> muestra{records.length !== 1 ? 's' : ''} registrada{records.length !== 1 ? 's' : ''}
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {records.map(rec => (
+                    <div key={rec.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <h3 className="card-title" style={{ margin: 0, fontSize: 16 }}>{rec.producto}</h3>
+                            <span style={{ 
+                              fontSize: 11, 
+                              padding: '2px 8px', 
+                              borderRadius: 12, 
+                              background: rec.isAtributo ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                              color: rec.isAtributo ? '#60a5fa' : '#34d399',
+                              border: rec.isAtributo ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)',
+                              fontWeight: 600
+                            }}>
+                              {rec.isAtributo ? `Atributos (Carta ${rec.tipoGrafico.toUpperCase()})` : 'Variables Continuas'}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+                            <strong>Variable:</strong> {rec.variable} &middot; <strong>Inspector:</strong> {rec.analista} &middot; <strong>Fecha:</strong> {rec.fecha}
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                            <strong>Subgrupos:</strong> {rec.subgrupos} &middot; {!rec.isAtributo && `Tamaño: ${rec.tam} \u00B7 `}<strong>LIE:</strong> {rec.lie} &middot; <strong>LSE:</strong> {rec.lse}
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button 
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleExportDataRaw(rec)}
+                          >
+                            Datos Brutos
+                          </button>
+                          
+                          {rec.isAtributo ? (
+                            <button 
+                              className="btn btn-primary btn-sm"
+                              onClick={() => handleExportAttributeChart(rec)}
+                            >
+                              Gráfico de Control ({rec.tipoGrafico.toUpperCase()})
+                            </button>
+                          ) : (
+                            <>
+                              <button 
+                                className="btn btn-primary btn-sm"
+                                onClick={() => handleExportVariableXbarR(rec)}
+                              >
+                                Gráfico X̄-R
+                              </button>
+                              <button 
+                                className="btn btn-primary btn-sm"
+                                onClick={() => handleExportVariableXbarS(rec)}
+                              >
+                                Gráfico X̄-S
+                              </button>
+                            </>
+                          )}
+                          
+                          {!rec.isAtributo && (rec.lie !== '-' || rec.lse !== '-') && (
+                            <button 
+                              className="btn btn-secondary btn-sm"
+                              style={{ 
+                                borderColor: 'var(--green-primary)',
+                                color: 'var(--green-light)',
+                                background: 'rgba(16, 185, 129, 0.05)'
+                              }}
+                              onClick={() => handleExportCapability(rec)}
+                            >
+                              Capacidad
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {rec.notas && (
+                        <div style={{ 
+                          fontSize: 12, 
+                          color: 'var(--text-muted)', 
+                          background: 'rgba(255,255,255,0.02)', 
+                          padding: '8px 12px', 
+                          borderRadius: 6,
+                          borderLeft: '3px solid var(--border)',
+                          fontStyle: 'italic'
+                        }}>
+                          <strong>Notas:</strong> {rec.notas}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
