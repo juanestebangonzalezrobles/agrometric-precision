@@ -741,6 +741,17 @@ tr:hover td {
   /* Clase auxiliar para ocultar componentes específicos en la app */
 }
 
+/* Diseño de dos columnas para Ayuda en Escritorio */
+.help-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.help-sidebar {
+  width: 240px;
+}
+
 /* --- ESTILOS DE RESPONSIVIDAD PARA MÓVILES Y TABLETS --- */
 
 /* Header móvil oculto en escritorio por defecto */
